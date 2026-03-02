@@ -1,4 +1,5 @@
 # MCPulse — JMeter MCP Sampler
+[![CI (main)](https://github.com/AndreyVMarkelov/MCPulse/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AndreyVMarkelov/MCPulse/actions/workflows/ci.yml?query=branch%3Amain)
 
 > Load-test any **MCP (Model Context Protocol)** server that uses the **stdio transport** — directly from Apache JMeter.
 
