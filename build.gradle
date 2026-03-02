@@ -25,17 +25,14 @@ repositories {
 def jmeterVersion = '5.6.3'
 
 dependencies {
-    // JMeter — provided (не включаем в jar)
+    // JMeter APIs are provided by the JMeter runtime.
     compileOnly "org.apache.jmeter:ApacheJMeter_core:${jmeterVersion}"
     compileOnly "org.apache.jmeter:ApacheJMeter_java:${jmeterVersion}"
 
-    // JSON
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.1'
 
-    // Logging
     compileOnly 'org.slf4j:slf4j-api:1.7.36'
 
-    // Tests
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'org.mockito:mockito-core:5.11.0'
     testImplementation "org.apache.jmeter:ApacheJMeter_core:${jmeterVersion}"
@@ -67,7 +64,7 @@ def requireJmeterHome = {
     return home
 }
 
-// Fat jar — копируем в lib/ папку JMeter
+// Build a fat jar for JMeter lib/ext deployment.
 jar {
     manifest {
         attributes(
@@ -75,7 +72,7 @@ jar {
             'Implementation-Version': version
         )
     }
-    // Включаем только Jackson (всё остальное provided)
+    // Include runtime dependencies only (JMeter is compileOnly).
     from configurations.runtimeClasspath.collect {
         it.isDirectory() ? it : zipTree(it)
     }

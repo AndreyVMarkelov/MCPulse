@@ -50,10 +50,6 @@ public class McpClient {
         this.requestTimeoutMs = requestTimeoutMs;
     }
 
-    // -------------------------------------------------------------------------
-    // Public MCP methods
-    // -------------------------------------------------------------------------
-
     /**
      * MCP initialize handshake.
      * Must be called once before any other method.
@@ -70,7 +66,6 @@ public class McpClient {
 
         JsonRpcResponse response = send("initialize", params);
 
-        // Send the required 'initialized' notification (no response expected)
         sendNotification("notifications/initialized");
 
         return response;
@@ -106,10 +101,6 @@ public class McpClient {
     public JsonRpcResponse resourcesList() throws IOException {
         return send("resources/list", null);
     }
-
-    // -------------------------------------------------------------------------
-    // Internal helpers
-    // -------------------------------------------------------------------------
 
     /**
      * Sends a JSON-RPC request and waits for a response.

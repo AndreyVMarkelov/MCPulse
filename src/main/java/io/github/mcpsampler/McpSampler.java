@@ -38,7 +38,6 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
     private static final Logger log = LoggerFactory.getLogger(McpSampler.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    // ---- Property keys (also used by GUI) -----------------------------------
     public static final String PROP_COMMAND         = "McpSampler.command";
     public static final String PROP_ARGS            = "McpSampler.args";
     public static final String PROP_METHOD          = "McpSampler.method";
@@ -48,20 +47,14 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
     public static final String PROP_CLIENT_VERSION  = "McpSampler.clientVersion";
     public static final String PROP_TIMEOUT_MS      = "McpSampler.timeoutMs";
 
-    // ---- Supported methods ---------------------------------------------------
     public static final String METHOD_INITIALIZE     = "initialize";
     public static final String METHOD_TOOLS_LIST     = "tools/list";
     public static final String METHOD_TOOLS_CALL     = "tools/call";
     public static final String METHOD_RESOURCES_LIST = "resources/list";
 
-    // ---- Per-thread state ---------------------------------------------------
     private transient McpProcessManager processManager;
     private transient McpClient mcpClient;
     private transient boolean initialized = false;
-
-    // =========================================================================
-    // JMeter lifecycle
-    // =========================================================================
 
     @Override
     public void threadStarted() {
@@ -82,9 +75,6 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
         initialized = false;
     }
 
-    // =========================================================================
-    // Sampling
-    // =========================================================================
 
     @Override
     public SampleResult sample(Entry entry) {
@@ -117,9 +107,6 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
         return result;
     }
 
-    // =========================================================================
-    // Helpers
-    // =========================================================================
 
     /**
      * Lazily initializes the MCP client and performs the initialize handshake
@@ -133,7 +120,6 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
             mcpClient = new McpClient(process, getTimeoutMs());
         }
 
-        // Auto-initialize if the selected method isn't initialize itself
         if (!initialized && !METHOD_INITIALIZE.equals(getMethod())) {
             log.info("Auto-initializing MCP connection for thread: {}", threadKey);
             mcpClient.initialize(getClientName(), getClientVersion());
@@ -202,10 +188,6 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
     private String getThreadKey() {
         return Long.toString(Thread.currentThread().getId());
     }
-
-    // =========================================================================
-    // Property accessors
-    // =========================================================================
 
     public String getCommand()       { return getPropertyAsString(PROP_COMMAND, "uvx"); }
     public void setCommand(String v) { setProperty(PROP_COMMAND, v); }

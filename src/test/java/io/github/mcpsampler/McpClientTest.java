@@ -21,21 +21,18 @@ class McpClientTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** A fake Process backed by piped streams that we control in tests. */
     private Process fakeProcess;
     private BufferedReader serverReadsStdin;
     private PipedOutputStream clientWritesToStdin;
-    private PipedOutputStream writeToStdout; // we write responses here
+    private PipedOutputStream writeToStdout;
     private PipedInputStream clientReadsStdout;
 
     @BeforeEach
     void setUp() throws IOException {
-        // stdin pipe: client writes → serverStdin
         PipedInputStream serverReads = new PipedInputStream();
         clientWritesToStdin = new PipedOutputStream(serverReads);
         serverReadsStdin = new BufferedReader(new InputStreamReader(serverReads, StandardCharsets.UTF_8));
 
-        // stdout pipe: we write responses → client reads
         clientReadsStdout = new PipedInputStream();
         writeToStdout = new PipedOutputStream(clientReadsStdout);
 
@@ -47,22 +44,18 @@ class McpClientTest {
 
     @Test
     void initialize_sendsCorrectMethodAndParsesResponse() throws Exception {
-        // Arrange — prepare server response
         JsonRpcResponse fakeResponse = buildSuccessResponse(1,
                 Map.of("protocolVersion", "2024-11-05", "capabilities", Map.of()));
 
         McpClient client = new McpClient(fakeProcess);
 
-        // Write response in a background thread (avoids deadlock on pipe)
-        Thread responder = responderThread(fakeResponse, 2); // 2 messages: initialize + initialized notification
+        Thread responder = responderThread(fakeResponse, 2);
         responder.start();
 
-        // Act
         JsonRpcResponse response = client.initialize("test-client", "1.0");
 
         responder.join(3000);
 
-        // Assert
         assertTrue(response.isSuccess(), "Expected successful response");
         assertNull(response.getError());
 
@@ -119,7 +112,6 @@ class McpClientTest {
 
     @Test
     void send_returnsErrorResponse_whenServerReturnsJsonRpcError() throws Exception {
-        // Arrange error response
         ObjectNode errorNode = MAPPER.createObjectNode()
                 .put("jsonrpc", "2.0")
                 .put("id", 1);
@@ -131,7 +123,6 @@ class McpClientTest {
 
         Thread responder = new Thread(() -> {
             try {
-                // small delay to let client write request first
                 Thread.sleep(50);
                 writeToStdout.write((MAPPER.writeValueAsString(errorNode) + "\n")
                         .getBytes(StandardCharsets.UTF_8));
@@ -169,10 +160,6 @@ class McpClientTest {
         verify(fakeProcess, atLeastOnce()).destroyForcibly();
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
     private JsonRpcResponse buildSuccessResponse(int id, Object result) throws Exception {
         ObjectNode node = MAPPER.createObjectNode();
         node.put("jsonrpc", "2.0");
@@ -187,10 +174,6 @@ class McpClientTest {
         return MAPPER.readTree(line);
     }
 
-    /**
-     * Returns a daemon thread that writes {@code count} JSON-RPC responses
-     * to the fake server stdout, with a small delay before each one.
-     */
     private Thread responderThread(JsonRpcResponse response, int count) {
         Thread t = new Thread(() -> {
             try {

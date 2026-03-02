@@ -17,19 +17,15 @@ public class McpSamplerGui extends AbstractSamplerGui {
 
     private static final long serialVersionUID = 1L;
 
-    // Process config
     private JTextField commandField;
     private JTextField argsField;
     private JTextField timeoutField;
 
-    // Client config
     private JTextField clientNameField;
     private JTextField clientVersionField;
 
-    // Method
     private JComboBox<String> methodCombo;
 
-    // tools/call specific
     private JTextField toolNameField;
     private JTextArea toolArgsArea;
     private JPanel toolCallPanel;
@@ -99,10 +95,6 @@ public class McpSamplerGui extends AbstractSamplerGui {
         updateToolCallVisibility(McpSampler.METHOD_TOOLS_LIST);
     }
 
-    // =========================================================================
-    // UI construction
-    // =========================================================================
-
     private void init() {
         setLayout(new BorderLayout());
         setBorder(makeBorder());
@@ -111,24 +103,19 @@ public class McpSamplerGui extends AbstractSamplerGui {
         JPanel mainPanel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = defaultGbc();
 
-        // --- Server process section ---
         mainPanel.add(buildProcessPanel(), gbc);
         gbc.gridy++;
 
-        // --- Client info section ---
         mainPanel.add(buildClientPanel(), gbc);
         gbc.gridy++;
 
-        // --- Method section ---
         mainPanel.add(buildMethodPanel(), gbc);
         gbc.gridy++;
 
-        // --- tools/call args ---
         toolCallPanel = buildToolCallPanel();
         mainPanel.add(toolCallPanel, gbc);
         gbc.gridy++;
 
-        // Filler
         gbc.weighty = 1.0;
         mainPanel.add(new JPanel(), gbc);
 
@@ -218,10 +205,6 @@ public class McpSamplerGui extends AbstractSamplerGui {
             repaint();
         }
     }
-
-    // =========================================================================
-    // Layout helpers
-    // =========================================================================
 
     private GridBagConstraints defaultGbc() {
         GridBagConstraints gbc = new GridBagConstraints();
