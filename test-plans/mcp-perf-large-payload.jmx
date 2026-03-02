@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="MCPulse - Perf Large Payload" enabled="true">
+      <stringProp name="TestPlan.comments">Shows serialization and memory pressure when MCP responses are large</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Large Payload Pressure" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlGui" testclass="LoopController">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">40</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">20</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">10</stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <io.github.mcpsampler.McpSampler guiclass="io.github.mcpsampler.gui.McpSamplerGui" testclass="io.github.mcpsampler.McpSampler" testname="tools/call payload 256kb" enabled="true">
+          <stringProp name="McpSampler.command">python3</stringProp>
+          <stringProp name="McpSampler.args">scripts/mock_perf_mcp_server.py --base-delay-ms 5</stringProp>
+          <stringProp name="McpSampler.method">tools/call</stringProp>
+          <stringProp name="McpSampler.toolName">payload</stringProp>
+          <stringProp name="McpSampler.toolArgsJson">{"sizeKb":256}</stringProp>
+          <stringProp name="McpSampler.clientName">mcpulse</stringProp>
+          <stringProp name="McpSampler.clientVersion">1.0.0</stringProp>
+        </io.github.mcpsampler.McpSampler>
+        <hashTree/>
+
+        <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <name>saveConfig</name>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+            </value>
+          </objProp>
+          <stringProp name="filename"></stringProp>
+        </ResultCollector>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

@@ -1,0 +1,159 @@
+plugins {
+    id 'java'
+    id 'checkstyle'
+    id 'maven-publish'
+}
+
+group = 'io.github.mcpsampler'
+version = '1.0.0'
+
+base {
+    archivesName = 'jmeter-mcp-sampler'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+def jmeterVersion = '5.6.3'
+
+dependencies {
+    // JMeter — provided (не включаем в jar)
+    compileOnly "org.apache.jmeter:ApacheJMeter_core:${jmeterVersion}"
+    compileOnly "org.apache.jmeter:ApacheJMeter_java:${jmeterVersion}"
+
+    // JSON
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.1'
+
+    // Logging
+    compileOnly 'org.slf4j:slf4j-api:1.7.36'
+
+    // Tests
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'org.mockito:mockito-core:5.11.0'
+    testImplementation "org.apache.jmeter:ApacheJMeter_core:${jmeterVersion}"
+    testImplementation "org.apache.jmeter:ApacheJMeter_java:${jmeterVersion}"
+    testRuntimeOnly 'org.slf4j:slf4j-simple:1.7.36'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+checkstyle {
+    toolVersion = '10.18.2'
+    configFile = file("$rootDir/config/checkstyle/checkstyle.xml")
+}
+
+tasks.withType(Checkstyle).configureEach {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+def requireJmeterHome = {
+    String home = System.getenv('JMETER_HOME')
+    if (home == null || home.trim().isEmpty()) {
+        throw new GradleException('JMETER_HOME is not set. Example: JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew <task>')
+    }
+    return home
+}
+
+// Fat jar — копируем в lib/ папку JMeter
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'JMeter MCP Sampler',
+            'Implementation-Version': version
+        )
+    }
+    // Включаем только Jackson (всё остальное provided)
+    from configurations.runtimeClasspath.collect {
+        it.isDirectory() ? it : zipTree(it)
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.register('installLocal', Copy) {
+    dependsOn(tasks.named('jar'))
+    doFirst {
+        String jmeterHome = requireJmeterHome()
+        File extDir = file("${jmeterHome}/lib/ext")
+        if (!extDir.exists() && !extDir.mkdirs()) {
+            throw new GradleException("Could not create JMeter ext directory: ${extDir}")
+        }
+    }
+    from(layout.buildDirectory.dir('libs')) {
+        include '*.jar'
+    }
+    into {
+        String jmeterHome = requireJmeterHome()
+        return file("${jmeterHome}/lib/ext")
+    }
+}
+
+def registerJmeterPlanTask = { String taskName, String planFile, String outputDir ->
+    tasks.register(taskName, Exec) {
+        dependsOn(tasks.named('installLocal'))
+        doFirst {
+            String jmeterHome = requireJmeterHome()
+            file(outputDir).mkdirs()
+            commandLine(
+                    "${jmeterHome}/bin/jmeter",
+                    '-n',
+                    '-t', planFile,
+                    '-l', "${outputDir}/results.jtl",
+                    '-e',
+                    '-o', "${outputDir}/report"
+            )
+        }
+    }
+}
+
+registerJmeterPlanTask('mockEcho', 'test-plans/mcp-mock-test.jmx', 'results/mock-echo')
+registerJmeterPlanTask('mockCalc', 'test-plans/mcp-calc-test.jmx', 'results/mock-calc')
+registerJmeterPlanTask('perfColdStart', 'test-plans/mcp-perf-cold-start.jmx', 'results/perf-cold-start')
+registerJmeterPlanTask('perfTail', 'test-plans/mcp-perf-tail-latency.jmx', 'results/perf-tail')
+registerJmeterPlanTask('perfPayload', 'test-plans/mcp-perf-large-payload.jmx', 'results/perf-payload')
+
+tasks.register('mockAll') {
+    dependsOn('mockEcho', 'mockCalc')
+}
+
+tasks.register('perfAll') {
+    dependsOn('perfColdStart', 'perfTail', 'perfPayload')
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId = 'jmeter-mcp-sampler'
+            pom {
+                name = 'jmeter-mcp-sampler'
+                description = 'JMeter plugin for MCP stdio server testing'
+            }
+        }
+    }
+
+    repositories {
+        if (System.getenv('GITHUB_REPOSITORY') != null) {
+            maven {
+                name = 'GitHubPackages'
+                url = uri("https://maven.pkg.github.com/${System.getenv('GITHUB_REPOSITORY')}")
+                credentials {
+                    username = System.getenv('GITHUB_ACTOR')
+                    password = System.getenv('GITHUB_TOKEN')
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,50 @@
+services:
+  mock-echo:
+    build: .
+    image: mcpulse:latest
+    container_name: mcpulse-mock-echo
+    volumes:
+      - ./results/docker-mock-echo:/results
+    environment:
+      TEST_PLAN: /opt/mcpulse/plans/mcp-mock-test.jmx
+    profiles: [mock-echo]
+
+  mock-calc:
+    build: .
+    image: mcpulse:latest
+    container_name: mcpulse-mock-calc
+    volumes:
+      - ./results/docker-mock-calc:/results
+    environment:
+      TEST_PLAN: /opt/mcpulse/plans/mcp-calc-test.jmx
+    profiles: [mock-calc]
+
+  perf-cold-start:
+    build: .
+    image: mcpulse:latest
+    container_name: mcpulse-perf-cold-start
+    volumes:
+      - ./results/docker-perf-cold-start:/results
+    environment:
+      TEST_PLAN: /opt/mcpulse/plans/mcp-perf-cold-start.jmx
+    profiles: [perf-cold-start]
+
+  perf-tail:
+    build: .
+    image: mcpulse:latest
+    container_name: mcpulse-perf-tail
+    volumes:
+      - ./results/docker-perf-tail:/results
+    environment:
+      TEST_PLAN: /opt/mcpulse/plans/mcp-perf-tail-latency.jmx
+    profiles: [perf-tail]
+
+  perf-payload:
+    build: .
+    image: mcpulse:latest
+    container_name: mcpulse-perf-payload
+    volumes:
+      - ./results/docker-perf-payload:/results
+    environment:
+      TEST_PLAN: /opt/mcpulse/plans/mcp-perf-large-payload.jmx
+    profiles: [perf-payload]

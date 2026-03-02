@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="MCPulse — mcp-server-fetch (stdio)" enabled="true">
+      <stringProp name="TestPlan.comments">Tests mcp-server-fetch over stdio transport</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- Thread Group: Smoke test (1 user, 1 loop)   -->
+      <!-- ═══════════════════════════════════════════ -->
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Smoke Test" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">stoptest</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlGui" testclass="LoopController">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+      </ThreadGroup>
+      <hashTree>
+
+        <!-- Step 1: initialize -->
+        <io.github.mcpsampler.McpSampler guiclass="io.github.mcpsampler.gui.McpSamplerGui"
+            testclass="io.github.mcpsampler.McpSampler"
+            testname="1. initialize"
+            enabled="true">
+          <stringProp name="McpSampler.command">uvx</stringProp>
+          <stringProp name="McpSampler.args">mcp-server-fetch</stringProp>
+          <stringProp name="McpSampler.method">initialize</stringProp>
+          <stringProp name="McpSampler.clientName">mcpulse</stringProp>
+          <stringProp name="McpSampler.clientVersion">1.0.0</stringProp>
+        </io.github.mcpsampler.McpSampler>
+        <hashTree/>
+
+        <!-- Step 2: tools/list -->
+        <io.github.mcpsampler.McpSampler guiclass="io.github.mcpsampler.gui.McpSamplerGui"
+            testclass="io.github.mcpsampler.McpSampler"
+            testname="2. tools/list"
+            enabled="true">
+          <stringProp name="McpSampler.command">uvx</stringProp>
+          <stringProp name="McpSampler.args">mcp-server-fetch</stringProp>
+          <stringProp name="McpSampler.method">tools/list</stringProp>
+          <stringProp name="McpSampler.clientName">mcpulse</stringProp>
+          <stringProp name="McpSampler.clientVersion">1.0.0</stringProp>
+        </io.github.mcpsampler.McpSampler>
+        <hashTree/>
+
+        <!-- Step 3: tools/call fetch -->
+        <io.github.mcpsampler.McpSampler guiclass="io.github.mcpsampler.gui.McpSamplerGui"
+            testclass="io.github.mcpsampler.McpSampler"
+            testname="3. tools/call fetch"
+            enabled="true">
+          <stringProp name="McpSampler.command">uvx</stringProp>
+          <stringProp name="McpSampler.args">mcp-server-fetch</stringProp>
+          <stringProp name="McpSampler.method">tools/call</stringProp>
+          <stringProp name="McpSampler.toolName">fetch</stringProp>
+          <stringProp name="McpSampler.toolArgsJson">{"url": "https://example.com"}</stringProp>
+          <stringProp name="McpSampler.clientName">mcpulse</stringProp>
+          <stringProp name="McpSampler.clientVersion">1.0.0</stringProp>
+        </io.github.mcpsampler.McpSampler>
+        <hashTree/>
+
+        <!-- View Results Tree (for debugging) -->
+        <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <name>saveConfig</name>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>true</responseDataOnError>
+              <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+              <bytes>true</bytes>
+              <sentBytes>true</sentBytes>
+              <url>true</url>
+              <threadCounts>true</threadCounts>
+              <idleTime>true</idleTime>
+              <connectTime>true</connectTime>
+            </value>
+          </objProp>
+          <stringProp name="filename"></stringProp>
+        </ResultCollector>
+        <hashTree/>
+
+      </hashTree>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- Thread Group: Load test (10 users, 5 loops) -->
+      <!-- ═══════════════════════════════════════════ -->
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Load Test" enabled="false">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlGui" testclass="LoopController">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">5</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">10</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">10</stringProp>
+      </ThreadGroup>
+      <hashTree>
+
+        <io.github.mcpsampler.McpSampler guiclass="io.github.mcpsampler.gui.McpSamplerGui"
+            testclass="io.github.mcpsampler.McpSampler"
+            testname="tools/list (load)"
+            enabled="true">
+          <stringProp name="McpSampler.command">uvx</stringProp>
+          <stringProp name="McpSampler.args">mcp-server-fetch</stringProp>
+          <stringProp name="McpSampler.method">tools/list</stringProp>
+          <stringProp name="McpSampler.clientName">mcpulse</stringProp>
+          <stringProp name="McpSampler.clientVersion">1.0.0</stringProp>
+        </io.github.mcpsampler.McpSampler>
+        <hashTree/>
+
+        <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <name>saveConfig</name>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+            </value>
+          </objProp>
+          <stringProp name="filename">/results/results.jtl</stringProp>
+        </ResultCollector>
+        <hashTree/>
+
+      </hashTree>
+
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
