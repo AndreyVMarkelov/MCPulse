@@ -1,9 +1,10 @@
 package io.github.mcpsampler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.mcpsampler.model.JsonRpcResponse;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,15 +14,12 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.*;
 
 class McpClientTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private Process fakeProcess;
+    private FakeProcess fakeProcess;
     private BufferedReader serverReadsStdin;
     private PipedOutputStream clientWritesToStdin;
     private PipedOutputStream writeToStdout;
@@ -36,10 +34,15 @@ class McpClientTest {
         clientReadsStdout = new PipedInputStream();
         writeToStdout = new PipedOutputStream(clientReadsStdout);
 
-        fakeProcess = mock(Process.class);
-        when(fakeProcess.getOutputStream()).thenReturn(clientWritesToStdin);
-        when(fakeProcess.getInputStream()).thenReturn(clientReadsStdout);
-        when(fakeProcess.isAlive()).thenReturn(true);
+        fakeProcess = new FakeProcess(clientWritesToStdin, clientReadsStdout);
+    }
+
+    @AfterEach
+    void tearDown() {
+        closeQuietly(serverReadsStdin);
+        closeQuietly(writeToStdout);
+        closeQuietly(clientReadsStdout);
+        closeQuietly(clientWritesToStdin);
     }
 
     @Test
@@ -147,8 +150,8 @@ class McpClientTest {
 
     @Test
     void send_timesOutAndForcesProcessTermination_whenServerDoesNotRespond() throws Exception {
-        when(fakeProcess.destroyForcibly()).thenReturn(fakeProcess);
-        when(fakeProcess.waitFor(anyLong(), any(TimeUnit.class))).thenReturn(true);
+        fakeProcess.waitForReturnValue = true;
+        fakeProcess.alive = true;
 
         McpClient client = new McpClient(fakeProcess, 30);
 
@@ -157,7 +160,18 @@ class McpClientTest {
 
         JsonNode request = readSentRequest();
         assertEquals("tools/list", request.get("method").asText());
-        verify(fakeProcess, atLeastOnce()).destroyForcibly();
+        assertTrue(fakeProcess.destroyForciblyCalled, "Expected process to be forcefully destroyed");
+    }
+
+    @Test
+    void send_fails_whenServerStdoutClosesWithoutResponse() throws Exception {
+        McpClient client = new McpClient(fakeProcess, 1_000);
+
+        writeToStdout.close();
+
+        IOException ex = assertThrows(IOException.class, client::toolsList);
+        assertTrue(ex.getMessage().contains("closed stdout unexpectedly")
+                || ex.getMessage().contains("Failed to read MCP response"));
     }
 
     private JsonRpcResponse buildSuccessResponse(int id, Object result) throws Exception {
@@ -189,5 +203,81 @@ class McpClientTest {
         });
         t.setDaemon(true);
         return t;
+    }
+
+    private void closeQuietly(Closeable closeable) {
+        if (closeable == null) {
+            return;
+        }
+        try {
+            closeable.close();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static final class FakeProcess extends Process {
+        private final OutputStream outputStream;
+        private final InputStream inputStream;
+        private final InputStream errorStream = new ByteArrayInputStream(new byte[0]);
+
+        private boolean alive = true;
+        private boolean waitForReturnValue = true;
+        private boolean destroyForciblyCalled;
+
+        private FakeProcess(OutputStream outputStream, InputStream inputStream) {
+            this.outputStream = outputStream;
+            this.inputStream = inputStream;
+        }
+
+        @Override
+        public OutputStream getOutputStream() {
+            return outputStream;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return inputStream;
+        }
+
+        @Override
+        public InputStream getErrorStream() {
+            return errorStream;
+        }
+
+        @Override
+        public int waitFor() {
+            alive = false;
+            return 0;
+        }
+
+        @Override
+        public boolean waitFor(long timeout, TimeUnit unit) {
+            if (waitForReturnValue) {
+                alive = false;
+            }
+            return waitForReturnValue;
+        }
+
+        @Override
+        public int exitValue() {
+            return alive ? 1 : 0;
+        }
+
+        @Override
+        public void destroy() {
+            // no-op
+        }
+
+        @Override
+        public Process destroyForcibly() {
+            destroyForciblyCalled = true;
+            alive = false;
+            return this;
+        }
+
+        @Override
+        public boolean isAlive() {
+            return alive;
+        }
     }
 }

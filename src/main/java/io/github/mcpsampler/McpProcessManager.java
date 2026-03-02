@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -40,9 +41,14 @@ public class McpProcessManager implements Closeable {
      * Returns the process for the current thread, starting it if necessary.
      */
     public Process getOrStartProcess(String threadName) throws IOException {
-        return processes.compute(threadName, (key, existing) -> {
-            if (existing != null && existing.isAlive()) {
-                return existing;
+        Process active = processes.get(threadName);
+        if (active != null && active.isAlive()) {
+            return active;
+        }
+
+        return processes.compute(threadName, (key, current) -> {
+            if (current != null && current.isAlive()) {
+                return current;
             }
             try {
                 return startProcess();
@@ -56,7 +62,7 @@ public class McpProcessManager implements Closeable {
         ProcessBuilder pb = buildProcessBuilder();
         pb.redirectErrorStream(false); // keep stderr separate so we can log it
 
-        log.info("Starting MCP server: {}", pb.command());
+        log.info("Starting MCP server: {}", sanitizeCommandForLog(pb.command()));
         Process process = pb.start();
 
         // Drain stderr in background to prevent blocking
@@ -77,18 +83,12 @@ public class McpProcessManager implements Closeable {
     }
 
     private ProcessBuilder buildProcessBuilder() {
-        ProcessBuilder pb;
-        if (args == null || args.isEmpty()) {
-            pb = new ProcessBuilder(command);
-        } else {
-            String[] fullCmd = new String[1 + args.size()];
-            fullCmd[0] = command;
-            for (int i = 0; i < args.size(); i++) {
-                fullCmd[i + 1] = args.get(i);
-            }
-            pb = new ProcessBuilder(fullCmd);
+        List<String> fullCommand = new ArrayList<>(1 + (args == null ? 0 : args.size()));
+        fullCommand.add(command);
+        if (args != null && !args.isEmpty()) {
+            fullCommand.addAll(args);
         }
-        return pb;
+        return new ProcessBuilder(fullCommand);
     }
 
     /**
@@ -148,5 +148,33 @@ public class McpProcessManager implements Closeable {
         try {
             process.getOutputStream().close();
         } catch (IOException ignored) {}
+    }
+
+    private String sanitizeCommandForLog(List<String> fullCommand) {
+        if (fullCommand == null || fullCommand.isEmpty()) {
+            return "[]";
+        }
+        List<String> sanitized = new ArrayList<>(fullCommand.size());
+        for (String arg : fullCommand) {
+            sanitized.add(maskSensitiveArg(arg));
+        }
+        return sanitized.toString();
+    }
+
+    private String maskSensitiveArg(String arg) {
+        if (arg == null) {
+            return null;
+        }
+        String lower = arg.toLowerCase();
+        if (lower.contains("token")
+                || lower.contains("secret")
+                || lower.contains("password")
+                || lower.contains("apikey")
+                || lower.contains("api_key")
+                || lower.contains("authorization")
+                || lower.contains("bearer")) {
+            return "***";
+        }
+        return arg;
     }
 }

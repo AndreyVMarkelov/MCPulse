@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -46,22 +47,34 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
     public static final String PROP_CLIENT_NAME     = "McpSampler.clientName";
     public static final String PROP_CLIENT_VERSION  = "McpSampler.clientVersion";
     public static final String PROP_TIMEOUT_MS      = "McpSampler.timeoutMs";
+    public static final String PROP_WARMUP_MODE     = "McpSampler.warmupMode";
 
     public static final String METHOD_INITIALIZE     = "initialize";
     public static final String METHOD_TOOLS_LIST     = "tools/list";
     public static final String METHOD_TOOLS_CALL     = "tools/call";
     public static final String METHOD_RESOURCES_LIST = "resources/list";
 
+    public static final String WARMUP_NONE       = "none";
+    public static final String WARMUP_PROCESS    = "process";
+    public static final String WARMUP_INITIALIZE = "initialize";
+
     private transient McpProcessManager processManager;
     private transient McpClient mcpClient;
     private transient boolean initialized = false;
+    private transient String cachedToolArgsJson;
+    private transient Map<String, Object> cachedToolArgs = Collections.emptyMap();
 
     @Override
     public void threadStarted() {
         String command = getCommand();
         List<String> args = parseArgs(getArgs());
-        processManager = new McpProcessManager(command, args);
+        processManager = createProcessManager(command, args);
+        mcpClient = null;
+        initialized = false;
+        cachedToolArgsJson = null;
+        cachedToolArgs = Collections.emptyMap();
         log.info("McpSampler thread started — command: {} {}", command, args);
+        warmupClientIfConfigured();
     }
 
     @Override
@@ -73,6 +86,8 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
         }
         mcpClient = null;
         initialized = false;
+        cachedToolArgsJson = null;
+        cachedToolArgs = Collections.emptyMap();
     }
 
 
@@ -117,7 +132,7 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
 
         if (mcpClient == null) {
             Process process = processManager.getOrStartProcess(threadKey);
-            mcpClient = new McpClient(process, getTimeoutMs());
+            mcpClient = createClient(process, getTimeoutMs());
         }
 
         if (!initialized && !METHOD_INITIALIZE.equals(getMethod())) {
@@ -159,7 +174,7 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
             result.setResponseMessage("OK");
         } else {
             result.setSuccessful(false);
-            result.setResponseCode("" + response.getError().getCode());
+            result.setResponseCode(String.valueOf(response.getError().getCode()));
             result.setResponseMessage(response.getError().getMessage());
         }
     }
@@ -168,10 +183,18 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
         if (json == null || json.isBlank()) {
             return Collections.emptyMap();
         }
+        if (json.equals(cachedToolArgsJson)) {
+            return cachedToolArgs;
+        }
         try {
-            return MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> parsed = MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {});
+            cachedToolArgsJson = json;
+            cachedToolArgs = parsed;
+            return parsed;
         } catch (Exception e) {
             log.warn("Could not parse tool arguments JSON; using empty object");
+            cachedToolArgsJson = json;
+            cachedToolArgs = Collections.emptyMap();
             return Collections.emptyMap();
         }
     }
@@ -185,8 +208,53 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
                 .collect(Collectors.toList());
     }
 
-    private String getThreadKey() {
+    protected String getThreadKey() {
         return Long.toString(Thread.currentThread().getId());
+    }
+
+    private void warmupClientIfConfigured() {
+        String mode = normalizeWarmupMode(getWarmupMode());
+        if (WARMUP_NONE.equals(mode) || processManager == null) {
+            return;
+        }
+
+        String threadKey = getThreadKey();
+        try {
+            Process process = processManager.getOrStartProcess(threadKey);
+            if (WARMUP_INITIALIZE.equals(mode)) {
+                mcpClient = createClient(process, getTimeoutMs());
+                mcpClient.initialize(getClientName(), getClientVersion());
+                initialized = true;
+            }
+            log.info("Warm-up completed for thread {} with mode {}", threadKey, mode);
+        } catch (Exception e) {
+            log.warn("Warm-up failed for thread {}: {}", threadKey, e.getMessage());
+            processManager.stopProcess(threadKey);
+            mcpClient = null;
+            initialized = false;
+        }
+    }
+
+    private String normalizeWarmupMode(String value) {
+        if (value == null) {
+            return WARMUP_NONE;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (WARMUP_NONE.equals(normalized)
+                || WARMUP_PROCESS.equals(normalized)
+                || WARMUP_INITIALIZE.equals(normalized)) {
+            return normalized;
+        }
+        log.warn("Unknown warmup mode '{}', falling back to '{}'", value, WARMUP_NONE);
+        return WARMUP_NONE;
+    }
+
+    protected McpProcessManager createProcessManager(String command, List<String> args) {
+        return new McpProcessManager(command, args);
+    }
+
+    protected McpClient createClient(Process process, int timeoutMs) {
+        return new McpClient(process, timeoutMs);
     }
 
     public String getCommand()       { return getPropertyAsString(PROP_COMMAND, "uvx"); }
@@ -202,7 +270,11 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
     public void setToolName(String v) { setProperty(PROP_TOOL_NAME, v); }
 
     public String getToolArgsJson()       { return getPropertyAsString(PROP_TOOL_ARGS_JSON, "{}"); }
-    public void setToolArgsJson(String v) { setProperty(PROP_TOOL_ARGS_JSON, v); }
+    public void setToolArgsJson(String v) {
+        setProperty(PROP_TOOL_ARGS_JSON, v);
+        cachedToolArgsJson = null;
+        cachedToolArgs = Collections.emptyMap();
+    }
 
     public String getClientName()       { return getPropertyAsString(PROP_CLIENT_NAME, "jmeter-mcp-sampler"); }
     public void setClientName(String v) { setProperty(PROP_CLIENT_NAME, v); }
@@ -212,4 +284,7 @@ public class McpSampler extends AbstractSampler implements ThreadListener {
 
     public int getTimeoutMs()       { return getPropertyAsInt(PROP_TIMEOUT_MS, 30_000); }
     public void setTimeoutMs(int v) { setProperty(PROP_TIMEOUT_MS, v); }
+
+    public String getWarmupMode()       { return getPropertyAsString(PROP_WARMUP_MODE, WARMUP_NONE); }
+    public void setWarmupMode(String v) { setProperty(PROP_WARMUP_MODE, v); }
 }

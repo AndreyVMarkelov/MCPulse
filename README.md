@@ -48,6 +48,7 @@ Restart JMeter.
 | Arguments | Space-separated args | `mcp-server-fetch` |
 | Client name | Sent in `initialize` | `jmeter-mcp-sampler` |
 | Client version | Sent in `initialize` | `1.0.0` |
+| Warm-up mode | `none`, `process`, `initialize` | `none` |
 | MCP Method | Which method to call | `tools/list` |
 | Tool name | (tools/call only) | `fetch` |
 | Arguments (JSON) | (tools/call only) | `{"url":"https://example.com"}` |

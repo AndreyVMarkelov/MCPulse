@@ -36,6 +36,12 @@ public class McpClient {
     private final BufferedWriter stdin;
     private final BufferedReader stdout;
     private final int requestTimeoutMs;
+    // Rollback switch: set -Dmcpsampler.client.asyncReader=false to use legacy Future/get timeout path.
+    private final boolean asyncReaderEnabled;
+    private final Object ioLock = new Object();
+    private final BlockingQueue<ReadResult> readQueue = new LinkedBlockingQueue<>();
+    private final Thread stdoutReaderThread;
+    private volatile boolean readerClosed;
 
     public McpClient(Process process) {
         this(process, 30_000);
@@ -48,6 +54,15 @@ public class McpClient {
         this.stdout = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         this.requestTimeoutMs = requestTimeoutMs;
+        this.asyncReaderEnabled = Boolean.parseBoolean(
+                System.getProperty("mcpsampler.client.asyncReader", "true"));
+        if (asyncReaderEnabled) {
+            this.stdoutReaderThread = new Thread(this::readStdoutLoop, "mcp-client-stdout-" + safeProcessId(process));
+            this.stdoutReaderThread.setDaemon(true);
+            this.stdoutReaderThread.start();
+        } else {
+            this.stdoutReaderThread = null;
+        }
     }
 
     /**
@@ -112,7 +127,7 @@ public class McpClient {
         String requestJson = MAPPER.writeValueAsString(request);
         log.debug(">>> id={}, method={}", id, method);
 
-        synchronized (this) {
+        synchronized (ioLock) {
             stdin.write(requestJson);
             stdin.newLine();
             stdin.flush();
@@ -138,14 +153,66 @@ public class McpClient {
         String json = MAPPER.writeValueAsString(notification);
         log.debug(">>> [notification] method={}", method);
 
-        synchronized (this) {
+        synchronized (ioLock) {
             stdin.write(json);
             stdin.newLine();
             stdin.flush();
         }
     }
 
+    private void readStdoutLoop() {
+        try {
+            while (!readerClosed) {
+                String line = stdout.readLine();
+                if (line == null) {
+                    readQueue.offer(ReadResult.eof());
+                    return;
+                }
+                readQueue.offer(ReadResult.line(line));
+            }
+        } catch (IOException e) {
+            if (!readerClosed) {
+                readQueue.offer(ReadResult.error(e));
+            }
+        }
+    }
+
     private String readResponseLineWithTimeout(String method, int id) throws IOException {
+        if (!asyncReaderEnabled) {
+            return readResponseLineWithFutureTimeout(method, id);
+        }
+
+        ReadResult readResult;
+        try {
+            readResult = readQueue.poll(requestTimeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while waiting for MCP response", e);
+        }
+
+        if (readResult == null) {
+            closeStreamsQuietly();
+            forceStopProcessQuietly();
+            throw new IOException("Timeout waiting for MCP response (method=" + method
+                    + ", id=" + id + ", timeoutMs=" + requestTimeoutMs + ")");
+        }
+
+        if (readResult.eof) {
+            return null;
+        }
+
+        if (readResult.error != null) {
+            Throwable cause = readResult.error;
+            if (cause instanceof IOException) {
+                throw (IOException) cause;
+            }
+            throw new IOException("Failed to read MCP response", cause);
+        }
+
+        return readResult.line;
+    }
+
+    private String readResponseLineWithFutureTimeout(String method, int id) throws IOException {
         Future<String> future = READ_POOL.submit(stdout::readLine);
         try {
             return future.get(requestTimeoutMs, TimeUnit.MILLISECONDS);
@@ -169,6 +236,11 @@ public class McpClient {
     }
 
     private void closeStreamsQuietly() {
+        readerClosed = true;
+        readQueue.clear();
+        if (stdoutReaderThread != null) {
+            stdoutReaderThread.interrupt();
+        }
         try {
             stdout.close();
         } catch (IOException ignored) {}
@@ -186,5 +258,37 @@ public class McpClient {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception ignored) {}
+    }
+
+    private static final class ReadResult {
+        private final String line;
+        private final IOException error;
+        private final boolean eof;
+
+        private ReadResult(String line, IOException error, boolean eof) {
+            this.line = line;
+            this.error = error;
+            this.eof = eof;
+        }
+
+        private static ReadResult line(String line) {
+            return new ReadResult(line, null, false);
+        }
+
+        private static ReadResult error(IOException error) {
+            return new ReadResult(null, error, false);
+        }
+
+        private static ReadResult eof() {
+            return new ReadResult(null, null, true);
+        }
+    }
+
+    private static String safeProcessId(Process process) {
+        try {
+            return Long.toString(process.pid());
+        } catch (UnsupportedOperationException ignored) {
+            return "unknown";
+        }
     }
 }

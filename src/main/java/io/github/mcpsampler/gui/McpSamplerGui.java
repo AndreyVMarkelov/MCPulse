@@ -20,6 +20,7 @@ public class McpSamplerGui extends AbstractSamplerGui {
     private JTextField commandField;
     private JTextField argsField;
     private JTextField timeoutField;
+    private JComboBox<String> warmupModeCombo;
 
     private JTextField clientNameField;
     private JTextField clientVersionField;
@@ -64,6 +65,7 @@ public class McpSamplerGui extends AbstractSamplerGui {
         sampler.setToolName(toolNameField.getText().trim());
         sampler.setToolArgsJson(toolArgsArea.getText().trim());
         sampler.setTimeoutMs(parseTimeoutMs(timeoutField.getText()));
+        sampler.setWarmupMode((String) warmupModeCombo.getSelectedItem());
     }
 
     @Override
@@ -78,6 +80,7 @@ public class McpSamplerGui extends AbstractSamplerGui {
         toolNameField.setText(sampler.getToolName());
         toolArgsArea.setText(sampler.getToolArgsJson());
         timeoutField.setText(Integer.toString(sampler.getTimeoutMs()));
+        warmupModeCombo.setSelectedItem(sampler.getWarmupMode());
         updateToolCallVisibility((String) methodCombo.getSelectedItem());
     }
 
@@ -92,6 +95,7 @@ public class McpSamplerGui extends AbstractSamplerGui {
         toolNameField.setText("");
         toolArgsArea.setText("{}");
         timeoutField.setText("30000");
+        warmupModeCombo.setSelectedItem(McpSampler.WARMUP_NONE);
         updateToolCallVisibility(McpSampler.METHOD_TOOLS_LIST);
     }
 
@@ -124,7 +128,7 @@ public class McpSamplerGui extends AbstractSamplerGui {
 
     private JPanel buildProcessPanel() {
         JPanel panel = titledPanel("MCP Server Process");
-        panel.setLayout(new GridLayout(3, 2, 4, 4));
+        panel.setLayout(new GridLayout(4, 2, 4, 4));
 
         panel.add(new JLabel("Command:"));
         commandField = new JTextField("uvx");
@@ -139,6 +143,16 @@ public class McpSamplerGui extends AbstractSamplerGui {
         timeoutField = new JTextField("30000");
         timeoutField.setToolTipText("Maximum wait for one MCP response before failing");
         panel.add(timeoutField);
+
+        panel.add(new JLabel("Warm-up mode:"));
+        warmupModeCombo = new JComboBox<>(new String[]{
+                McpSampler.WARMUP_NONE,
+                McpSampler.WARMUP_PROCESS,
+                McpSampler.WARMUP_INITIALIZE
+        });
+        warmupModeCombo.setSelectedItem(McpSampler.WARMUP_NONE);
+        warmupModeCombo.setToolTipText("none=lazy, process=spawn on thread start, initialize=spawn+handshake");
+        panel.add(warmupModeCombo);
 
         return panel;
     }
