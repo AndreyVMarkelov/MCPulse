@@ -87,7 +87,42 @@ jobs:
           if not match:
               sys.exit("Signing key cannot be parsed: missing armored private key block")
 
-          print(match.group(0).strip() + "\n", end="")
+          block = match.group(0)
+          lines = [ln.strip() for ln in block.splitlines()]
+
+          # Rebuild a canonical ASCII-armored block in case line formatting was mangled.
+          body_parts = []
+          checksum = ""
+          in_body = False
+          for ln in lines:
+              if not ln:
+                  continue
+              if ln.startswith("-----BEGIN PGP PRIVATE KEY BLOCK-----"):
+                  in_body = True
+                  continue
+              if ln.startswith("-----END PGP PRIVATE KEY BLOCK-----"):
+                  break
+              if not in_body:
+                  continue
+              if ln.startswith(("Version:", "Comment:")):
+                  continue
+              if ln.startswith("="):
+                  checksum = re.sub(r"[^A-Za-z0-9+/]", "", ln[1:])
+                  continue
+              cleaned = re.sub(r"[^A-Za-z0-9+/]", "", ln)
+              if cleaned:
+                  body_parts.append(cleaned)
+
+          body = "".join(body_parts)
+          if not body:
+              sys.exit("Signing key cannot be parsed: armored body is empty")
+
+          wrapped = "\n".join(body[i:i + 64] for i in range(0, len(body), 64))
+          out = "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n" + wrapped + "\n"
+          if checksum:
+              out += "=" + checksum[:4] + "\n"
+          out += "-----END PGP PRIVATE KEY BLOCK-----\n"
+          print(out, end="")
           PY
 
           if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
