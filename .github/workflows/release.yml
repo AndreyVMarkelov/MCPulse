@@ -12,6 +12,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSPHRASE }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_SIGNING_KEY_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,93 +36,18 @@ jobs:
           fi
           echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - name: Prepare signing key for Gradle
-        shell: bash
-        env:
-          RAW_SIGNING_KEY: ${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}
-          RAW_SIGNING_KEY_ID: ${{ secrets.MAVEN_SIGNING_KEY_ID }}
-        run: |
-          set -euo pipefail
-          tmp_key="$(mktemp)"
-          python3 - <<'PY' > "${tmp_key}"
-          import base64
-          import binascii
-          import os
-          import re
-          import sys
-
-          raw = os.environ.get("RAW_SIGNING_KEY", "")
-          if not raw.strip():
-              sys.exit("MAVEN_SIGNING_PRIVATE_KEY is empty")
-
-          key = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
-
-          # Strip common accidental wrappers added during copy/paste.
-          triple_quotes = ('"""', "'''")
-          for q in triple_quotes:
-              if key.startswith(q) and key.endswith(q) and len(key) >= 2 * len(q):
-                  key = key[len(q):-len(q)].strip()
-                  break
-          if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")):
-              key = key[1:-1].strip()
-
-          # Convert literal '\n' escapes to real line breaks.
-          key = key.replace("\\n", "\n")
-
-          # Optional fallback: base64-encoded armored key.
-          if "BEGIN PGP PRIVATE KEY BLOCK" not in key:
-              compact = re.sub(r"\s+", "", key)
-              if compact and re.fullmatch(r"[A-Za-z0-9+/=]+", compact):
-                  try:
-                      decoded = base64.b64decode(compact, validate=True).decode("utf-8", "ignore")
-                      if "BEGIN PGP PRIVATE KEY BLOCK" in decoded:
-                          key = decoded
-                  except (binascii.Error, UnicodeDecodeError):
-                      pass
-
-          match = re.search(
-              r"-----BEGIN PGP PRIVATE KEY BLOCK-----.*?-----END PGP PRIVATE KEY BLOCK-----",
-              key,
-              flags=re.S,
-          )
-          if not match:
-              sys.exit("Signing key cannot be parsed: missing armored private key block")
-
-          block = match.group(0).strip() + "\n"
-          print(block, end="")
-          PY
-
-          if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
-            echo "Signing key cannot be parsed by gpg. Store exact output of: gpg --armor --export-secret-keys <KEY_ID>"
-            exit 1
-          fi
-
-          {
-            echo 'ORG_GRADLE_PROJECT_signingInMemoryKey<<EOF'
-            cat "${tmp_key}"
-            echo EOF
-          } >> "$GITHUB_ENV"
-
-          if [[ -n "${RAW_SIGNING_KEY_ID:-}" ]]; then
-            echo "ORG_GRADLE_PROJECT_signingInMemoryKeyId=${RAW_SIGNING_KEY_ID}" >> "$GITHUB_ENV"
-          fi
-
-          rm -f "${tmp_key}"
-
       - name: Build artifacts
         run: ./gradlew clean build -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
 
       - name: Publish package (GitHub Packages)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSPHRASE }}
         run: ./gradlew publishAllPublicationsToGitHubPackagesRepository -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
 
       - name: Publish package (Maven Central)
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSPHRASE }}
         run: ./gradlew publishAndReleaseToMavenCentral -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
 
       - name: Create GitHub Release

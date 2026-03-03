@@ -34,7 +34,7 @@ Local fallback version remains snapshot style when no release property/tag is pr
 - `MAVEN_CENTRAL_USERNAME`
 - `MAVEN_CENTRAL_PASSWORD`
 - `MAVEN_SIGNING_PRIVATE_KEY`
-- `MAVEN_SIGNING_KEY_ID`
+- `MAVEN_SIGNING_KEY_ID` (optional)
 - `MAVEN_SIGNING_PASSPHRASE`
 
 ## Notes
