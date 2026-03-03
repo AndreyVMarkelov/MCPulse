@@ -44,7 +44,7 @@ jobs:
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "${tmp_dir}"' EXIT
 
-          echo "::group::Signing key diagnostics"
+          echo "=== Signing key diagnostics ==="
           echo "RAW_SIGNING_KEY length: ${#RAW_SIGNING_KEY}"
           if [[ "${RAW_SIGNING_KEY}" == *"BEGIN PGP PRIVATE KEY BLOCK"* ]]; then
             echo "RAW_SIGNING_KEY contains BEGIN marker: yes"
@@ -136,12 +136,23 @@ jobs:
                   manifest.write(f"{idx}\t{label}\t{filename}\t{size}\n")
           PY
 
+          if [[ ! -s "${tmp_dir}/manifest.tsv" ]]; then
+            echo "No signing key candidates were generated."
+            exit 1
+          fi
+
+          candidate_count="$(wc -l < "${tmp_dir}/manifest.tsv" | tr -d ' ')"
+          echo "Generated candidate count: ${candidate_count}"
+          echo "Candidate manifest:"
+          cat "${tmp_dir}/manifest.tsv"
+
           tmp_key=""
           while IFS=$'\t' read -r idx label filename size; do
             candidate="${tmp_dir}/${filename}"
             log_file="${tmp_dir}/${filename}.gpg.log"
+            sha256="$(shasum -a 256 "${candidate}" | awk '{print $1}')"
             echo ""
-            echo "Candidate #${idx}: label=${label}, file=${filename}, bytes=${size}"
+            echo "Candidate #${idx}: label=${label}, file=${filename}, bytes=${size}, sha256=${sha256}"
             if gpg --batch --import --dry-run "${candidate}" >/dev/null 2>"${log_file}"; then
               echo "gpg verdict: OK"
               if [[ -s "${log_file}" ]]; then
@@ -155,9 +166,8 @@ jobs:
             fi
           done < "${tmp_dir}/manifest.tsv"
 
-          echo "::endgroup::"
-
           if [[ -z "${tmp_key}" ]]; then
+            echo "No candidate could be imported by gpg --dry-run."
             echo "Signing key cannot be parsed by gpg. Store exact output of: gpg --armor --export-secret-keys <KEY_ID>"
             exit 1
           fi
