@@ -24,17 +24,26 @@ Most MCP servers communicate over stdin/stdout (stdio transport). There are no e
 ./gradlew jar
 ```
 
-The fat jar is produced at `build/libs/jmeter-mcp-sampler-1.0.0.jar`.
+The thin plugin jar is produced at `build/libs/jmeter-mcp-sampler-<version>.jar`.
 
 ### 2. Install
 
-Copy the jar into JMeter's `lib/ext/` folder:
+Recommended (plugin + runtime deps):
 
 ```bash
-cp build/libs/jmeter-mcp-sampler-1.0.0.jar $JMETER_HOME/lib/ext/
+JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew installLocalWithDeps
 ```
 
-Restart JMeter.
+This installs:
+
+- plugin jar into `lib/ext`
+- runtime dependencies into `lib`
+
+Plugin-only install (if dependencies are managed separately):
+
+```bash
+JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew installLocal
+```
 
 ### 3. Add to Test Plan
 
@@ -238,10 +247,10 @@ Watch for:
 
 ## Gradle Task Shortcuts
 
-All local scenario tasks automatically build the plugin and copy it to JMeter `lib/ext`.
+All local scenario tasks automatically build the plugin, copy it to JMeter `lib/ext`, and copy runtime dependencies to `lib`.
 
 ```bash
-JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew installLocal
+JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew installLocalWithDeps
 JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew mockEcho mockCalc
 JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew perfAll
 ```
@@ -269,6 +278,7 @@ Tag-based release flow is configured:
 
 - push a tag like `v1.0.1`
 - GitHub Actions runs build + publish to GitHub Packages + publish to Maven Central + GitHub Release artifact upload
+- published artifact version is derived from tag (`v1.0.1` -> `1.0.1`)
 
 Required repository secrets for Maven Central publish:
 

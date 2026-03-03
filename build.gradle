@@ -6,7 +6,14 @@ plugins {
 }
 
 group = 'io.github.mcpsampler'
-version = '1.0.0'
+
+def defaultVersion = '1.0.0-SNAPSHOT'
+def releaseVersionProp = findProperty('releaseVersion')?.toString()
+def tagRefName = System.getenv('GITHUB_REF_NAME')
+def tagDerivedVersion = (tagRefName != null && tagRefName.startsWith('v'))
+        ? tagRefName.substring(1)
+        : null
+version = releaseVersionProp ?: tagDerivedVersion ?: defaultVersion
 
 base {
     archivesName = 'jmeter-mcp-sampler'
@@ -65,7 +72,7 @@ def requireJmeterHome = {
     return home
 }
 
-// Build a fat jar for JMeter lib/ext deployment.
+// Build a thin plugin jar; runtime deps are published/resolved separately.
 jar {
     manifest {
         attributes(
@@ -73,12 +80,9 @@ jar {
             'Implementation-Version': version
         )
     }
-    // Include runtime dependencies only (JMeter is compileOnly).
-    from configurations.runtimeClasspath.collect {
-        it.isDirectory() ? it : zipTree(it)
-    }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
+
+def pluginJarName = providers.provider { "${base.archivesName.get()}-${project.version}.jar" }
 
 tasks.register('installLocal', Copy) {
     dependsOn(tasks.named('jar'))
@@ -90,7 +94,7 @@ tasks.register('installLocal', Copy) {
         }
     }
     from(layout.buildDirectory.dir('libs')) {
-        include '*.jar'
+        include pluginJarName.get()
     }
     into {
         String jmeterHome = requireJmeterHome()
@@ -98,9 +102,25 @@ tasks.register('installLocal', Copy) {
     }
 }
 
+tasks.register('installLocalWithDeps', Copy) {
+    dependsOn(tasks.named('installLocal'))
+    doFirst {
+        String jmeterHome = requireJmeterHome()
+        File libDir = file("${jmeterHome}/lib")
+        if (!libDir.exists() && !libDir.mkdirs()) {
+            throw new GradleException("Could not create JMeter lib directory: ${libDir}")
+        }
+    }
+    from(configurations.runtimeClasspath)
+    into {
+        String jmeterHome = requireJmeterHome()
+        return file("${jmeterHome}/lib")
+    }
+}
+
 def registerJmeterPlanTask = { String taskName, String planFile, String outputDir ->
     tasks.register(taskName, Exec) {
-        dependsOn(tasks.named('installLocal'))
+        dependsOn(tasks.named('installLocalWithDeps'))
         doFirst {
             String jmeterHome = requireJmeterHome()
             file(outputDir).mkdirs()

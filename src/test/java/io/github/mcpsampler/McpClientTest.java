@@ -9,9 +9,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.*;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,6 +29,8 @@ class McpClientTest {
 
     @BeforeEach
     void setUp() throws IOException {
+        resetRequestIdSequence();
+
         PipedInputStream serverReads = new PipedInputStream();
         clientWritesToStdin = new PipedOutputStream(serverReads);
         serverReadsStdin = new BufferedReader(new InputStreamReader(serverReads, StandardCharsets.UTF_8));
@@ -72,6 +76,35 @@ class McpClientTest {
         assertEquals("2.0", initializedNotification.get("jsonrpc").asText());
         assertEquals("notifications/initialized", initializedNotification.get("method").asText());
         assertNull(initializedNotification.get("id"), "Notification must not include request id");
+    }
+
+    @Test
+    void initialize_doesNotSendInitializedNotification_whenInitializeFails() throws Exception {
+        ObjectNode errorNode = MAPPER.createObjectNode()
+                .put("jsonrpc", "2.0")
+                .put("id", 1);
+        ObjectNode err = errorNode.putObject("error");
+        err.put("code", -32600);
+        err.put("message", "Invalid request");
+        JsonRpcResponse errorResponse = MAPPER.treeToValue(errorNode, JsonRpcResponse.class);
+
+        McpClient client = new McpClient(fakeProcess);
+
+        Thread responder = responderThread(errorResponse, 1);
+        responder.start();
+
+        JsonRpcResponse response = client.initialize("test-client", "1.0");
+        responder.join(3000);
+
+        assertFalse(response.isSuccess(), "Expected initialize to return JSON-RPC error");
+        assertEquals(-32600, response.getError().getCode());
+
+        closeQuietly(clientWritesToStdin);
+
+        JsonNode initializeReq = readSentRequest();
+        assertEquals("initialize", initializeReq.get("method").asText());
+        assertNull(serverReadsStdin.readLine(),
+                "initialize failure must not trigger notifications/initialized");
     }
 
     @Test
@@ -174,6 +207,52 @@ class McpClientTest {
                 || ex.getMessage().contains("Failed to read MCP response"));
     }
 
+    @Test
+    void send_ignoresNotificationsAndMismatchedIds_untilExpectedIdArrives() throws Exception {
+        McpClient client = new McpClient(fakeProcess, 1_000);
+
+        Thread responder = new Thread(() -> {
+            try {
+                Thread.sleep(25);
+
+                ObjectNode notification = MAPPER.createObjectNode()
+                        .put("jsonrpc", "2.0")
+                        .put("method", "notifications/progress");
+                writeToStdout.write((MAPPER.writeValueAsString(notification) + "\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                writeToStdout.flush();
+
+                ObjectNode otherResponse = MAPPER.createObjectNode()
+                        .put("jsonrpc", "2.0")
+                        .put("id", 999);
+                otherResponse.putObject("result").put("ignored", true);
+                writeToStdout.write((MAPPER.writeValueAsString(otherResponse) + "\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                writeToStdout.flush();
+
+                ObjectNode expectedResponse = MAPPER.createObjectNode()
+                        .put("jsonrpc", "2.0")
+                        .put("id", 1);
+                expectedResponse.putObject("result").put("ok", true);
+                writeToStdout.write((MAPPER.writeValueAsString(expectedResponse) + "\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                writeToStdout.flush();
+                writeToStdout.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        responder.setDaemon(true);
+        responder.start();
+
+        JsonRpcResponse response = client.toolsList();
+        responder.join(3_000);
+
+        assertTrue(response.isSuccess());
+        assertEquals(1, response.getId());
+        assertTrue(response.getResult().get("ok").asBoolean());
+    }
+
     private JsonRpcResponse buildSuccessResponse(int id, Object result) throws Exception {
         ObjectNode node = MAPPER.createObjectNode();
         node.put("jsonrpc", "2.0");
@@ -212,6 +291,17 @@ class McpClientTest {
         try {
             closeable.close();
         } catch (IOException ignored) {
+        }
+    }
+
+    private void resetRequestIdSequence() {
+        try {
+            Field field = McpClient.class.getDeclaredField("ID_SEQ");
+            field.setAccessible(true);
+            AtomicInteger seq = (AtomicInteger) field.get(null);
+            seq.set(1);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to reset request ID sequence for tests", e);
         }
     }
 

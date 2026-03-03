@@ -1,6 +1,7 @@
 package io.github.mcpsampler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.mcpsampler.model.JsonRpcRequest;
 import io.github.mcpsampler.model.JsonRpcResponse;
@@ -81,7 +82,11 @@ public class McpClient {
 
         JsonRpcResponse response = send("initialize", params);
 
-        sendNotification("notifications/initialized");
+        if (response != null && response.isSuccess()) {
+            sendNotification("notifications/initialized");
+        } else {
+            log.debug("Skipping notifications/initialized because initialize returned an error");
+        }
 
         return response;
     }
@@ -132,13 +137,7 @@ public class McpClient {
             stdin.newLine();
             stdin.flush();
 
-            String responseLine = readResponseLineWithTimeout(method, id);
-            if (responseLine == null) {
-                throw new IOException("MCP server closed stdout unexpectedly (process alive: "
-                        + process.isAlive() + ")");
-            }
-            log.debug("<<< id={}, responseBytes={}", id, responseLine.length());
-            return MAPPER.readValue(responseLine, JsonRpcResponse.class);
+            return readResponseWithExpectedId(method, id);
         }
     }
 
@@ -177,14 +176,50 @@ public class McpClient {
         }
     }
 
-    private String readResponseLineWithTimeout(String method, int id) throws IOException {
+    private JsonRpcResponse readResponseWithExpectedId(String method, int expectedId) throws IOException {
+        final long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(requestTimeoutMs);
+
+        while (true) {
+            long remainingNanos = deadlineNanos - System.nanoTime();
+            if (remainingNanos <= 0) {
+                closeStreamsQuietly();
+                forceStopProcessQuietly();
+                throw new IOException("Timeout waiting for MCP response (method=" + method
+                        + ", id=" + expectedId + ", timeoutMs=" + requestTimeoutMs + ")");
+            }
+
+            long remainingMs = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos));
+            String responseLine = readResponseLineWithTimeout(method, expectedId, remainingMs);
+            if (responseLine == null) {
+                throw new IOException("MCP server closed stdout unexpectedly (process alive: "
+                        + process.isAlive() + ")");
+            }
+
+            JsonNode node = MAPPER.readTree(responseLine);
+            Integer responseId = extractResponseId(node.get("id"));
+            if (responseId == null) {
+                // Ignore notifications or malformed id payloads while waiting for this request's response.
+                log.debug("<<< skipping message without usable id while waiting for id={}", expectedId);
+                continue;
+            }
+            if (responseId != expectedId) {
+                log.debug("<<< skipping response with id={} while waiting for id={}", responseId, expectedId);
+                continue;
+            }
+
+            log.debug("<<< id={}, responseBytes={}", expectedId, responseLine.length());
+            return MAPPER.treeToValue(node, JsonRpcResponse.class);
+        }
+    }
+
+    private String readResponseLineWithTimeout(String method, int id, long timeoutMs) throws IOException {
         if (!asyncReaderEnabled) {
-            return readResponseLineWithFutureTimeout(method, id);
+            return readResponseLineWithFutureTimeout(method, id, timeoutMs);
         }
 
         ReadResult readResult;
         try {
-            readResult = readQueue.poll(requestTimeoutMs, TimeUnit.MILLISECONDS);
+            readResult = readQueue.poll(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while waiting for MCP response", e);
@@ -212,10 +247,10 @@ public class McpClient {
         return readResult.line;
     }
 
-    private String readResponseLineWithFutureTimeout(String method, int id) throws IOException {
+    private String readResponseLineWithFutureTimeout(String method, int id, long timeoutMs) throws IOException {
         Future<String> future = READ_POOL.submit(stdout::readLine);
         try {
-            return future.get(requestTimeoutMs, TimeUnit.MILLISECONDS);
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
             closeStreamsQuietly();
@@ -233,6 +268,30 @@ public class McpClient {
             }
             throw new IOException("Failed to read MCP response", cause);
         }
+    }
+
+    private Integer extractResponseId(JsonNode idNode) {
+        if (idNode == null || idNode.isNull()) {
+            return null;
+        }
+
+        if (idNode.isNumber()) {
+            long value = idNode.longValue();
+            if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+                return null;
+            }
+            return (int) value;
+        }
+
+        if (idNode.isTextual()) {
+            try {
+                return Integer.parseInt(idNode.textValue());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     private void closeStreamsQuietly() {
