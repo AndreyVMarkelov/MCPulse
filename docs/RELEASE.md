@@ -11,17 +11,17 @@ Workflow:
 Push a tag that matches `v*`, for example:
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ## Versioning
 
 - CI derives release version from tag:
-- `v1.0.1` -> `1.0.1`
+- `v1.0.0` -> `1.0.0`
 - passed to Gradle as `-PreleaseVersion=<derived>`
 
-Local fallback version remains snapshot style when no release property/tag is provided.
+Local fallback version remains snapshot style (`1.0.0-SNAPSHOT`) when no release property/tag is provided.
 
 ## Publish Targets
 
@@ -36,13 +36,6 @@ Local fallback version remains snapshot style when no release property/tag is pr
 - `MAVEN_SIGNING_PRIVATE_KEY`
 - `MAVEN_SIGNING_KEY_ID` (optional)
 - `MAVEN_SIGNING_PASSPHRASE`
-
-## Sonatype Prerequisites
-
-- Namespace must be allowed for your account: `io.github.andreyvmarkelov`
-- Public signing key must be discoverable on a supported keyserver:
-- `gpg --keyserver keyserver.ubuntu.com --send-keys 672A3FF5F1744C0F`
-- `gpg --keyserver keys.openpgp.org --send-keys 672A3FF5F1744C0F`
 
 ## Notes
 

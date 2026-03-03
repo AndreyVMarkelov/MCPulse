@@ -47,7 +47,7 @@ class McpSamplerTest {
         RecordingClient client = new RecordingClient(manager.process);
         TestableSampler sampler = new TestableSampler(manager, client);
         sampler.setClientName("warmup-client");
-        sampler.setClientVersion("1.2.3");
+        sampler.setClientVersion("1.0.0");
         sampler.setWarmupMode(McpSampler.WARMUP_INITIALIZE);
 
         sampler.threadStarted();
@@ -55,7 +55,7 @@ class McpSamplerTest {
         assertEquals(1, manager.startCalls);
         assertEquals(1, client.initializeCalls);
         assertEquals("warmup-client", client.lastClientName);
-        assertEquals("1.2.3", client.lastClientVersion);
+        assertEquals("1.0.0", client.lastClientVersion);
     }
 
     private static final class TestableSampler extends McpSampler {
