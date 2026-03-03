@@ -35,37 +35,36 @@ jobs:
       - name: Prepare signing key for Gradle
         shell: bash
         run: |
-          KEY='${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}'
-          KEY="${KEY//$'\r'/}"
-          if [[ "$KEY" == *"\\n"* ]]; then
-            KEY="$(printf '%b' "${KEY//\\n/\\n}")"
+          tmp_key="$(mktemp)"
+          cat > "${tmp_key}" <<'EOF_KEY'
+${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}
+EOF_KEY
+
+          # Normalize CRLF to LF if key was pasted from Windows clipboard.
+          tr -d '\r' < "${tmp_key}" > "${tmp_key}.clean"
+          mv "${tmp_key}.clean" "${tmp_key}"
+
+          # If key was saved with literal '\n' escapes, convert them to real newlines.
+          if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
+            python3 - "${tmp_key}" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+if "\\n" in s and "BEGIN PGP PRIVATE KEY BLOCK" in s:
+    p.write_text(s.replace("\\n", "\n"))
+PY
           fi
-          # Accept base64-encoded key if user stored it that way.
-          if [[ "$KEY" != *"BEGIN PGP PRIVATE KEY BLOCK"* ]]; then
-            DECODED="$(printf '%s' "$KEY" | base64 --decode 2>/dev/null || true)"
-            if [[ "$DECODED" == *"BEGIN PGP PRIVATE KEY BLOCK"* ]]; then
-              KEY="$DECODED"
-            fi
-          fi
-          if [[ "$KEY" != *"BEGIN PGP PRIVATE KEY BLOCK"* ]]; then
-            echo "MAVEN_SIGNING_PRIVATE_KEY is invalid. Expected ASCII-armored PGP private key block."
+
+          if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
+            echo "Signing key cannot be parsed by gpg. Recreate MAVEN_SIGNING_PRIVATE_KEY from exported file."
             exit 1
           fi
+
           {
             echo 'ORG_GRADLE_PROJECT_signingInMemoryKey<<EOF'
-            echo "$KEY"
+            cat "${tmp_key}"
             echo EOF
           } >> "$GITHUB_ENV"
-
-      - name: Validate signing key format
-        shell: bash
-        run: |
-          tmp_key="$(mktemp)"
-          printf '%s\n' "${ORG_GRADLE_PROJECT_signingInMemoryKey}" > "${tmp_key}"
-          gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1 || {
-            echo "Signing key cannot be parsed by gpg"
-            exit 1
-          }
           rm -f "${tmp_key}"
 
       - name: Build artifacts
