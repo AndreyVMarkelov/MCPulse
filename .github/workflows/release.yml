@@ -37,13 +37,6 @@ jobs:
         run: |
           KEY='${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}'
           KEY="${KEY//$'\r'/}"
-          # Accept accidental wrapping like """...""" or quoted payloads.
-          KEY="${KEY#\"\"\"}"
-          KEY="${KEY%\"\"\"}"
-          KEY="${KEY#\"}"
-          KEY="${KEY%\"}"
-          KEY="${KEY#\'}"
-          KEY="${KEY%\'}"
           if [[ "$KEY" == *"\\n"* ]]; then
             KEY="$(printf '%b' "${KEY//\\n/\\n}")"
           fi
