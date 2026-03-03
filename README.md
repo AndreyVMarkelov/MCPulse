@@ -268,7 +268,15 @@ It uploads:
 Tag-based release flow is configured:
 
 - push a tag like `v1.0.1`
-- GitHub Actions runs build + publish + GitHub Release artifact upload
+- GitHub Actions runs build + publish to GitHub Packages + publish to Maven Central + GitHub Release artifact upload
+
+Required repository secrets for Maven Central publish:
+
+- `MAVEN_CENTRAL_USERNAME` (Sonatype portal token username)
+- `MAVEN_CENTRAL_PASSWORD` (Sonatype portal token password)
+- `MAVEN_SIGNING_PRIVATE_KEY` (ASCII-armored GPG private key)
+- `MAVEN_SIGNING_KEY_ID` (optional, but recommended)
+- `MAVEN_SIGNING_PASSPHRASE` (GPG key passphrase)
 
 Commands:
 

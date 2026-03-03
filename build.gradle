@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'checkstyle'
     id 'maven-publish'
+    id 'com.vanniktech.maven.publish' version '0.36.0'
 }
 
 group = 'io.github.mcpsampler'
@@ -129,18 +130,36 @@ tasks.register('perfAll') {
     dependsOn('perfColdStart', 'perfTail', 'perfPayload')
 }
 
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            from components.java
-            artifactId = 'jmeter-mcp-sampler'
-            pom {
-                name = 'jmeter-mcp-sampler'
-                description = 'JMeter plugin for MCP stdio server testing'
+mavenPublishing {
+    publishToMavenCentral(true)
+    signAllPublications()
+    coordinates(group.toString(), 'jmeter-mcp-sampler', version.toString())
+
+    pom {
+        name = 'jmeter-mcp-sampler'
+        description = 'JMeter plugin for MCP stdio server testing'
+        url = 'https://github.com/AndreyVMarkelov/MCPulse'
+        licenses {
+            license {
+                name = 'MIT License'
+                url = 'https://opensource.org/license/mit'
             }
         }
+        developers {
+            developer {
+                id = 'AndreyVMarkelov'
+                name = 'Andrey Markelov'
+            }
+        }
+        scm {
+            connection = 'scm:git:git://github.com/AndreyVMarkelov/MCPulse.git'
+            developerConnection = 'scm:git:ssh://git@github.com/AndreyVMarkelov/MCPulse.git'
+            url = 'https://github.com/AndreyVMarkelov/MCPulse'
+        }
     }
+}
 
+publishing {
     repositories {
         if (System.getenv('GITHUB_REPOSITORY') != null) {
             maven {
