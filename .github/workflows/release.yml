@@ -41,91 +41,97 @@ jobs:
           RAW_SIGNING_KEY_ID: ${{ secrets.MAVEN_SIGNING_KEY_ID }}
         run: |
           set -euo pipefail
-          tmp_key="$(mktemp)"
+          tmp_dir="$(mktemp -d)"
 
-          python3 - <<'PY' > "${tmp_key}"
+          python3 - "${tmp_dir}" <<'PY'
           import base64
           import binascii
           import os
+          import pathlib
           import re
           import sys
 
+          out_dir = pathlib.Path(sys.argv[1])
           raw = os.environ.get("RAW_SIGNING_KEY", "")
           if not raw.strip():
               sys.exit("MAVEN_SIGNING_PRIVATE_KEY is empty")
 
-          key = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
+          def norm_newlines(value: str) -> str:
+              return value.replace("\r\n", "\n").replace("\r", "\n")
 
-          # Remove common wrappers from copy-paste.
-          triple_quotes = ('"""', "'''")
-          for q in triple_quotes:
-              if key.startswith(q) and key.endswith(q) and len(key) >= 2 * len(q):
-                  key = key[len(q):-len(q)].strip()
-                  break
-          if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")):
-              key = key[1:-1].strip()
+          def unwrap_quotes(value: str) -> str:
+              value = value.strip()
+              for marker in ('"""', "'''"):
+                  if value.startswith(marker) and value.endswith(marker) and len(value) >= len(marker) * 2:
+                      return value[len(marker):-len(marker)].strip()
+              if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+                  return value[1:-1].strip()
+              return value
 
-          # Convert escaped newlines to actual newlines.
-          key = key.replace("\\n", "\n")
+          def extract_block(value: str):
+              match = re.search(
+                  r"-----BEGIN PGP PRIVATE KEY BLOCK-----.*?-----END PGP PRIVATE KEY BLOCK-----",
+                  value,
+                  flags=re.S,
+              )
+              if not match:
+                  return None
+              return norm_newlines(match.group(0)).strip() + "\n"
 
-          # Optional fallback: base64-encoded armored key.
-          if "BEGIN PGP PRIVATE KEY BLOCK" not in key:
-              compact = re.sub(r"\s+", "", key)
+          seen = set()
+          candidates = []
+
+          def add_candidate(value: str):
+              value = norm_newlines(value)
+              if not value.endswith("\n"):
+                  value += "\n"
+              if value not in seen:
+                  seen.add(value)
+                  candidates.append(value)
+
+          raw_norm = norm_newlines(raw)
+          variants = [
+              raw_norm,
+              raw_norm.replace("\\n", "\n"),
+              unwrap_quotes(raw_norm),
+              unwrap_quotes(raw_norm).replace("\\n", "\n"),
+          ]
+
+          for variant in variants:
+              if not variant.strip():
+                  continue
+              add_candidate(variant)
+              block = extract_block(variant)
+              if block:
+                  add_candidate(block)
+
+              compact = re.sub(r"\s+", "", variant)
               if compact and re.fullmatch(r"[A-Za-z0-9+/=]+", compact):
                   try:
                       decoded = base64.b64decode(compact, validate=True).decode("utf-8", "ignore")
-                      if "BEGIN PGP PRIVATE KEY BLOCK" in decoded:
-                          key = decoded
+                      add_candidate(decoded)
+                      block = extract_block(decoded)
+                      if block:
+                          add_candidate(block)
                   except (binascii.Error, UnicodeDecodeError):
                       pass
 
-          match = re.search(
-              r"-----BEGIN PGP PRIVATE KEY BLOCK-----.*?-----END PGP PRIVATE KEY BLOCK-----",
-              key,
-              flags=re.S,
-          )
-          if not match:
-              sys.exit("Signing key cannot be parsed: missing armored private key block")
+          if not candidates:
+              sys.exit("Signing key cannot be parsed: no key candidates found")
 
-          block = match.group(0)
-          lines = [ln.strip() for ln in block.splitlines()]
-
-          # Rebuild a canonical ASCII-armored block in case line formatting was mangled.
-          body_parts = []
-          checksum = ""
-          in_body = False
-          for ln in lines:
-              if not ln:
-                  continue
-              if ln.startswith("-----BEGIN PGP PRIVATE KEY BLOCK-----"):
-                  in_body = True
-                  continue
-              if ln.startswith("-----END PGP PRIVATE KEY BLOCK-----"):
-                  break
-              if not in_body:
-                  continue
-              if ln.startswith(("Version:", "Comment:")):
-                  continue
-              if ln.startswith("="):
-                  checksum = re.sub(r"[^A-Za-z0-9+/=]", "", ln[1:])
-                  continue
-              cleaned = re.sub(r"[^A-Za-z0-9+/=]", "", ln)
-              if cleaned:
-                  body_parts.append(cleaned)
-
-          body = "".join(body_parts)
-          if not body:
-              sys.exit("Signing key cannot be parsed: armored body is empty")
-
-          wrapped = "\n".join(body[i:i + 64] for i in range(0, len(body), 64))
-          out = "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n" + wrapped + "\n"
-          if checksum:
-              out += "=" + checksum[:4] + "\n"
-          out += "-----END PGP PRIVATE KEY BLOCK-----\n"
-          print(out, end="")
+          for idx, candidate in enumerate(candidates, 1):
+              (out_dir / f"candidate_{idx}.asc").write_text(candidate)
           PY
 
-          if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
+          tmp_key=""
+          for candidate in "${tmp_dir}"/candidate_*.asc; do
+            if gpg --batch --import --dry-run "${candidate}" >/dev/null 2>&1; then
+              tmp_key="${candidate}"
+              break
+            fi
+          done
+
+          if [[ -z "${tmp_key}" ]]; then
             echo "Signing key cannot be parsed by gpg. Store exact output of: gpg --armor --export-secret-keys <KEY_ID>"
             exit 1
           fi
@@ -140,7 +146,7 @@ jobs:
             echo "ORG_GRADLE_PROJECT_signingInMemoryKeyId=${RAW_SIGNING_KEY_ID}" >> "$GITHUB_ENV"
           fi
 
-          rm -f "${tmp_key}"
+          rm -rf "${tmp_dir}"
 
       - name: Build artifacts
         run: ./gradlew clean build -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
