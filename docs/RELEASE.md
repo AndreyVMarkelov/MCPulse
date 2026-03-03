@@ -37,6 +37,13 @@ Local fallback version remains snapshot style when no release property/tag is pr
 - `MAVEN_SIGNING_KEY_ID` (optional)
 - `MAVEN_SIGNING_PASSPHRASE`
 
+## Sonatype Prerequisites
+
+- Namespace must be allowed for your account: `io.github.andreyvmarkelov`
+- Public signing key must be discoverable on a supported keyserver:
+- `gpg --keyserver keyserver.ubuntu.com --send-keys 672A3FF5F1744C0F`
+- `gpg --keyserver keys.openpgp.org --send-keys 672A3FF5F1744C0F`
+
 ## Notes
 
 - publish uses signed artifacts

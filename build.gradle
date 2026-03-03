@@ -5,7 +5,7 @@ plugins {
     id 'com.vanniktech.maven.publish' version '0.34.0'
 }
 
-group = 'io.github.mcpsampler'
+group = 'io.github.andreyvmarkelov'
 
 def defaultVersion = '1.0.0-SNAPSHOT'
 def releaseVersionProp = findProperty('releaseVersion')?.toString()
