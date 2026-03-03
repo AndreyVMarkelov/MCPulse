@@ -12,8 +12,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSPHRASE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,7 +36,7 @@ jobs:
         shell: bash
         env:
           RAW_SIGNING_KEY: ${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}
-          RAW_SIGNING_KEY_ID: ${{ secrets.MAVEN_SIGNING_KEY_ID }}
+          RAW_SIGNING_PASSPHRASE: ${{ secrets.MAVEN_SIGNING_PASSPHRASE }}
         run: |
           set -euo pipefail
           tmp_dir="$(mktemp -d)"
@@ -50,6 +48,11 @@ jobs:
             echo "RAW_SIGNING_KEY contains BEGIN marker: yes"
           else
             echo "RAW_SIGNING_KEY contains BEGIN marker: no"
+          fi
+          echo "RAW_SIGNING_PASSPHRASE length: ${#RAW_SIGNING_PASSPHRASE}"
+          if [[ -z "${RAW_SIGNING_PASSPHRASE}" ]]; then
+            echo "MAVEN_SIGNING_PASSPHRASE is empty."
+            exit 1
           fi
 
           python3 - "${tmp_dir}" <<'PY'
@@ -175,15 +178,40 @@ jobs:
             exit 1
           fi
 
+          # Verify passphrase can unlock this key before invoking Gradle signing.
+          verify_home="${tmp_dir}/verify-home"
+          mkdir -p "${verify_home}"
+          chmod 700 "${verify_home}"
+          GNUPGHOME="${verify_home}" gpg --batch --import "${tmp_key}" >/dev/null 2>&1
+          selected_key_id="$(GNUPGHOME="${verify_home}" gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="sec"{print $5; exit}')"
+          if [[ -z "${selected_key_id}" ]]; then
+            echo "Unable to discover secret key id after import."
+            exit 1
+          fi
+
+          passphrase_log="${tmp_dir}/passphrase-check.log"
+          if ! printf 'mcpulse-signing-check' | GNUPGHOME="${verify_home}" gpg \
+            --batch \
+            --yes \
+            --pinentry-mode loopback \
+            --passphrase "${RAW_SIGNING_PASSPHRASE}" \
+            --local-user "${selected_key_id}" \
+            --armor \
+            --sign \
+            >/dev/null 2>"${passphrase_log}"; then
+            echo "Signing passphrase validation failed for imported key."
+            cat "${passphrase_log}"
+            exit 1
+          fi
+
           {
             echo 'ORG_GRADLE_PROJECT_signingInMemoryKey<<EOF'
             cat "${tmp_key}"
             echo EOF
+            echo 'ORG_GRADLE_PROJECT_signingInMemoryKeyPassword<<EOF'
+            printf '%s\n' "${RAW_SIGNING_PASSPHRASE}"
+            echo EOF
           } >> "$GITHUB_ENV"
-
-          if [[ -n "${RAW_SIGNING_KEY_ID:-}" ]]; then
-            echo "ORG_GRADLE_PROJECT_signingInMemoryKeyId=${RAW_SIGNING_KEY_ID}" >> "$GITHUB_ENV"
-          fi
 
       - name: Build artifacts
         run: ./gradlew clean build -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
@@ -191,13 +219,13 @@ jobs:
       - name: Publish package (GitHub Packages)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew publishAllPublicationsToGitHubPackagesRepository -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
+        run: ./gradlew publishAllPublicationsToGitHubPackagesRepository -PreleaseVersion="${RELEASE_VERSION}" --stacktrace --no-daemon
 
       - name: Publish package (Maven Central)
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-        run: ./gradlew publishAndReleaseToMavenCentral -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
+        run: ./gradlew publishAndReleaseToMavenCentral -PreleaseVersion="${RELEASE_VERSION}" --stacktrace --no-daemon
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
