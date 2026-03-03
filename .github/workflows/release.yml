@@ -36,42 +36,57 @@ jobs:
         shell: bash
         env:
           RAW_SIGNING_KEY: ${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}
+          RAW_SIGNING_KEY_ID: ${{ secrets.MAVEN_SIGNING_KEY_ID }}
         run: |
           set -euo pipefail
           tmp_key="$(mktemp)"
-          tmp_norm="$(mktemp)"
-          printf '%s' "${RAW_SIGNING_KEY}" > "${tmp_key}"
+          python3 - <<'PY' > "${tmp_key}"
+          import base64
+          import binascii
+          import os
+          import re
+          import sys
 
-          # Normalize CRLF to LF if key was pasted from Windows clipboard.
-          tr -d '\r' < "${tmp_key}" > "${tmp_norm}"
-          mv "${tmp_norm}" "${tmp_key}"
+          raw = os.environ.get("RAW_SIGNING_KEY", "")
+          if not raw.strip():
+              sys.exit("MAVEN_SIGNING_PRIVATE_KEY is empty")
 
-          # If key was saved with literal '\n' escapes, convert them to real newlines.
-          perl -0777 -i -pe 's/\\n/\n/g' "${tmp_key}"
+          key = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
 
-          # Keep only the armored private-key block if wrappers/extra text were added.
-          if grep -q 'BEGIN PGP PRIVATE KEY BLOCK' "${tmp_key}" && grep -q 'END PGP PRIVATE KEY BLOCK' "${tmp_key}"; then
-            awk '
-              /BEGIN PGP PRIVATE KEY BLOCK/ { in_block=1 }
-              in_block { print }
-              /END PGP PRIVATE KEY BLOCK/ { exit }
-            ' "${tmp_key}" > "${tmp_norm}"
-            mv "${tmp_norm}" "${tmp_key}"
+          # Strip common accidental wrappers added during copy/paste.
+          triple_quotes = ('"""', "'''")
+          for q in triple_quotes:
+              if key.startswith(q) and key.endswith(q) and len(key) >= 2 * len(q):
+                  key = key[len(q):-len(q)].strip()
+                  break
+          if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")):
+              key = key[1:-1].strip()
 
-            # Normalize wrapper noise around marker lines while keeping body bytes intact.
-            sed -E -i.bak \
-              -e '1s@^.*(-----BEGIN PGP PRIVATE KEY BLOCK-----).*$@\1@' \
-              -e '$s@^.*(-----END PGP PRIVATE KEY BLOCK-----).*$@\1@' \
-              "${tmp_key}"
-            rm -f "${tmp_key}.bak"
-          fi
+          # Convert literal '\n' escapes to real line breaks.
+          key = key.replace("\\n", "\n")
 
-          # Optional fallback: support base64-encoded armored key stored in the secret.
-          if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
-            if ! grep -q 'BEGIN PGP PRIVATE KEY BLOCK' "${tmp_key}" && base64 --decode "${tmp_key}" > "${tmp_norm}" 2>/dev/null; then
-              mv "${tmp_norm}" "${tmp_key}"
-            fi
-          fi
+          # Optional fallback: base64-encoded armored key.
+          if "BEGIN PGP PRIVATE KEY BLOCK" not in key:
+              compact = re.sub(r"\s+", "", key)
+              if compact and re.fullmatch(r"[A-Za-z0-9+/=]+", compact):
+                  try:
+                      decoded = base64.b64decode(compact, validate=True).decode("utf-8", "ignore")
+                      if "BEGIN PGP PRIVATE KEY BLOCK" in decoded:
+                          key = decoded
+                  except (binascii.Error, UnicodeDecodeError):
+                      pass
+
+          match = re.search(
+              r"-----BEGIN PGP PRIVATE KEY BLOCK-----.*?-----END PGP PRIVATE KEY BLOCK-----",
+              key,
+              flags=re.S,
+          )
+          if not match:
+              sys.exit("Signing key cannot be parsed: missing armored private key block")
+
+          block = match.group(0).strip() + "\n"
+          print(block, end="")
+          PY
 
           if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
             echo "Signing key cannot be parsed by gpg. Store exact output of: gpg --armor --export-secret-keys <KEY_ID>"
@@ -83,7 +98,12 @@ jobs:
             cat "${tmp_key}"
             echo EOF
           } >> "$GITHUB_ENV"
-          rm -f "${tmp_key}" "${tmp_norm}"
+
+          if [[ -n "${RAW_SIGNING_KEY_ID:-}" ]]; then
+            echo "ORG_GRADLE_PROJECT_signingInMemoryKeyId=${RAW_SIGNING_KEY_ID}" >> "$GITHUB_ENV"
+          fi
+
+          rm -f "${tmp_key}"
 
       - name: Build artifacts
         run: ./gradlew clean build -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
