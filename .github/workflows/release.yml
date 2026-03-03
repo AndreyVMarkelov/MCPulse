@@ -37,11 +37,25 @@ jobs:
         run: |
           KEY='${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}'
           KEY="${KEY//$'\r'/}"
+          # Accept accidental wrapping like """...""" or quoted payloads.
+          KEY="${KEY#\"\"\"}"
+          KEY="${KEY%\"\"\"}"
+          KEY="${KEY#\"}"
+          KEY="${KEY%\"}"
+          KEY="${KEY#\'}"
+          KEY="${KEY%\'}"
           if [[ "$KEY" == *"\\n"* ]]; then
             KEY="$(printf '%b' "${KEY//\\n/\\n}")"
           fi
+          # Accept base64-encoded key if user stored it that way.
           if [[ "$KEY" != *"BEGIN PGP PRIVATE KEY BLOCK"* ]]; then
-            echo "MAVEN_SIGNING_PRIVATE_KEY is not an ASCII-armored private key"
+            DECODED="$(printf '%s' "$KEY" | base64 --decode 2>/dev/null || true)"
+            if [[ "$DECODED" == *"BEGIN PGP PRIVATE KEY BLOCK"* ]]; then
+              KEY="$DECODED"
+            fi
+          fi
+          if [[ "$KEY" != *"BEGIN PGP PRIVATE KEY BLOCK"* ]]; then
+            echo "MAVEN_SIGNING_PRIVATE_KEY is invalid. Expected ASCII-armored PGP private key block."
             exit 1
           fi
           {
