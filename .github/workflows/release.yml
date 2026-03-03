@@ -107,9 +107,9 @@ jobs:
               if ln.startswith(("Version:", "Comment:")):
                   continue
               if ln.startswith("="):
-                  checksum = re.sub(r"[^A-Za-z0-9+/]", "", ln[1:])
+                  checksum = re.sub(r"[^A-Za-z0-9+/=]", "", ln[1:])
                   continue
-              cleaned = re.sub(r"[^A-Za-z0-9+/]", "", ln)
+              cleaned = re.sub(r"[^A-Za-z0-9+/=]", "", ln)
               if cleaned:
                   body_parts.append(cleaned)
 
