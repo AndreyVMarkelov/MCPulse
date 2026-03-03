@@ -37,21 +37,44 @@ jobs:
         env:
           RAW_SIGNING_KEY: ${{ secrets.MAVEN_SIGNING_PRIVATE_KEY }}
         run: |
+          set -euo pipefail
           tmp_key="$(mktemp)"
+          tmp_norm="$(mktemp)"
           printf '%s' "${RAW_SIGNING_KEY}" > "${tmp_key}"
 
           # Normalize CRLF to LF if key was pasted from Windows clipboard.
-          tr -d '\r' < "${tmp_key}" > "${tmp_key}.clean"
-          mv "${tmp_key}.clean" "${tmp_key}"
+          tr -d '\r' < "${tmp_key}" > "${tmp_norm}"
+          mv "${tmp_norm}" "${tmp_key}"
 
           # If key was saved with literal '\n' escapes, convert them to real newlines.
+          perl -0777 -i -pe 's/\\n/\n/g' "${tmp_key}"
+
+          # Keep only the armored private-key block if wrappers/extra text were added.
+          if grep -q 'BEGIN PGP PRIVATE KEY BLOCK' "${tmp_key}" && grep -q 'END PGP PRIVATE KEY BLOCK' "${tmp_key}"; then
+            awk '
+              /BEGIN PGP PRIVATE KEY BLOCK/ { in_block=1 }
+              in_block { print }
+              /END PGP PRIVATE KEY BLOCK/ { exit }
+            ' "${tmp_key}" > "${tmp_norm}"
+            mv "${tmp_norm}" "${tmp_key}"
+
+            # Normalize wrapper noise around marker lines while keeping body bytes intact.
+            sed -E -i.bak \
+              -e '1s@^.*(-----BEGIN PGP PRIVATE KEY BLOCK-----).*$@\1@' \
+              -e '$s@^.*(-----END PGP PRIVATE KEY BLOCK-----).*$@\1@' \
+              "${tmp_key}"
+            rm -f "${tmp_key}.bak"
+          fi
+
+          # Optional fallback: support base64-encoded armored key stored in the secret.
           if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
-            perl -0777 -pe 's/\\n/\n/g' "${tmp_key}" > "${tmp_key}.clean"
-            mv "${tmp_key}.clean" "${tmp_key}"
+            if ! grep -q 'BEGIN PGP PRIVATE KEY BLOCK' "${tmp_key}" && base64 --decode "${tmp_key}" > "${tmp_norm}" 2>/dev/null; then
+              mv "${tmp_norm}" "${tmp_key}"
+            fi
           fi
 
           if ! gpg --batch --import --dry-run "${tmp_key}" >/dev/null 2>&1; then
-            echo "Signing key cannot be parsed by gpg. Recreate MAVEN_SIGNING_PRIVATE_KEY from exported file."
+            echo "Signing key cannot be parsed by gpg. Store exact output of: gpg --armor --export-secret-keys <KEY_ID>"
             exit 1
           fi
 
@@ -60,7 +83,7 @@ jobs:
             cat "${tmp_key}"
             echo EOF
           } >> "$GITHUB_ENV"
-          rm -f "${tmp_key}"
+          rm -f "${tmp_key}" "${tmp_norm}"
 
       - name: Build artifacts
         run: ./gradlew clean build -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
