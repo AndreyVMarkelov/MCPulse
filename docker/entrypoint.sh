@@ -7,6 +7,8 @@ RESULTS_FILE="${RESULTS_FILE:-${RESULTS_DIR}/results.jtl}"
 REPORT_DIR="${REPORT_DIR:-${RESULTS_DIR}/report}"
 
 mkdir -p "${RESULTS_DIR}"
+mkdir -p "$(dirname "${RESULTS_FILE}")"
+rm -f "${RESULTS_FILE}"
 rm -rf "${REPORT_DIR}"
 
 echo "Running JMeter plan: ${TEST_PLAN}"
