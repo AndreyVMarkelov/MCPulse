@@ -42,6 +42,15 @@ jobs:
         run: |
           set -euo pipefail
           tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "${tmp_dir}"' EXIT
+
+          echo "::group::Signing key diagnostics"
+          echo "RAW_SIGNING_KEY length: ${#RAW_SIGNING_KEY}"
+          if [[ "${RAW_SIGNING_KEY}" == *"BEGIN PGP PRIVATE KEY BLOCK"* ]]; then
+            echo "RAW_SIGNING_KEY contains BEGIN marker: yes"
+          else
+            echo "RAW_SIGNING_KEY contains BEGIN marker: no"
+          fi
 
           python3 - "${tmp_dir}" <<'PY'
           import base64
@@ -81,55 +90,72 @@ jobs:
           seen = set()
           candidates = []
 
-          def add_candidate(value: str):
+          def add_candidate(label: str, value: str):
               value = norm_newlines(value)
               if not value.endswith("\n"):
                   value += "\n"
               if value not in seen:
                   seen.add(value)
-                  candidates.append(value)
+                  candidates.append((label, value))
 
           raw_norm = norm_newlines(raw)
           variants = [
-              raw_norm,
-              raw_norm.replace("\\n", "\n"),
-              unwrap_quotes(raw_norm),
-              unwrap_quotes(raw_norm).replace("\\n", "\n"),
+              ("raw", raw_norm),
+              ("raw_unescaped_newlines", raw_norm.replace("\\n", "\n")),
+              ("unwrapped_quotes", unwrap_quotes(raw_norm)),
+              ("unwrapped_quotes_unescaped_newlines", unwrap_quotes(raw_norm).replace("\\n", "\n")),
           ]
 
-          for variant in variants:
+          for label, variant in variants:
               if not variant.strip():
                   continue
-              add_candidate(variant)
+              add_candidate(label, variant)
               block = extract_block(variant)
               if block:
-                  add_candidate(block)
+                  add_candidate(f"{label}_extracted_block", block)
 
               compact = re.sub(r"\s+", "", variant)
               if compact and re.fullmatch(r"[A-Za-z0-9+/=]+", compact):
                   try:
                       decoded = base64.b64decode(compact, validate=True).decode("utf-8", "ignore")
-                      add_candidate(decoded)
+                      add_candidate(f"{label}_base64_decoded_utf8", decoded)
                       block = extract_block(decoded)
                       if block:
-                          add_candidate(block)
+                          add_candidate(f"{label}_base64_extracted_block", block)
                   except (binascii.Error, UnicodeDecodeError):
                       pass
 
           if not candidates:
               sys.exit("Signing key cannot be parsed: no key candidates found")
 
-          for idx, candidate in enumerate(candidates, 1):
-              (out_dir / f"candidate_{idx}.asc").write_text(candidate)
+          with (out_dir / "manifest.tsv").open("w", encoding="utf-8") as manifest:
+              for idx, (label, candidate) in enumerate(candidates, 1):
+                  filename = f"candidate_{idx}.asc"
+                  (out_dir / filename).write_text(candidate)
+                  size = len(candidate.encode("utf-8"))
+                  manifest.write(f"{idx}\t{label}\t{filename}\t{size}\n")
           PY
 
           tmp_key=""
-          for candidate in "${tmp_dir}"/candidate_*.asc; do
-            if gpg --batch --import --dry-run "${candidate}" >/dev/null 2>&1; then
+          while IFS=$'\t' read -r idx label filename size; do
+            candidate="${tmp_dir}/${filename}"
+            log_file="${tmp_dir}/${filename}.gpg.log"
+            echo ""
+            echo "Candidate #${idx}: label=${label}, file=${filename}, bytes=${size}"
+            if gpg --batch --import --dry-run "${candidate}" >/dev/null 2>"${log_file}"; then
+              echo "gpg verdict: OK"
+              if [[ -s "${log_file}" ]]; then
+                cat "${log_file}"
+              fi
               tmp_key="${candidate}"
               break
+            else
+              echo "gpg verdict: FAIL"
+              cat "${log_file}"
             fi
-          done
+          done < "${tmp_dir}/manifest.tsv"
+
+          echo "::endgroup::"
 
           if [[ -z "${tmp_key}" ]]; then
             echo "Signing key cannot be parsed by gpg. Store exact output of: gpg --armor --export-secret-keys <KEY_ID>"
@@ -145,8 +171,6 @@ jobs:
           if [[ -n "${RAW_SIGNING_KEY_ID:-}" ]]; then
             echo "ORG_GRADLE_PROJECT_signingInMemoryKeyId=${RAW_SIGNING_KEY_ID}" >> "$GITHUB_ENV"
           fi
-
-          rm -rf "${tmp_dir}"
 
       - name: Build artifacts
         run: ./gradlew clean build -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
