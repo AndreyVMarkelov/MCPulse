@@ -193,3 +193,9 @@ publishing {
         }
     }
 }
+
+// Gradle 8.10 task validation can report implicit dependency between metadata generation
+// and publication jars produced by the maven-publish plugin.
+tasks.matching { it.name == 'generateMetadataFileForMavenPublication' }.configureEach {
+    dependsOn('plainJavadocJar')
+}
