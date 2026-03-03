@@ -147,13 +147,16 @@ jobs:
           cat "${tmp_dir}/manifest.tsv"
 
           tmp_key=""
+          gpg_home="${tmp_dir}/gnupg-home"
+          mkdir -p "${gpg_home}"
+          chmod 700 "${gpg_home}"
           while IFS=$'\t' read -r idx label filename size; do
             candidate="${tmp_dir}/${filename}"
             log_file="${tmp_dir}/${filename}.gpg.log"
             sha256="$(shasum -a 256 "${candidate}" | awk '{print $1}')"
             echo ""
             echo "Candidate #${idx}: label=${label}, file=${filename}, bytes=${size}, sha256=${sha256}"
-            if gpg --batch --import --dry-run "${candidate}" >/dev/null 2>"${log_file}"; then
+            if GNUPGHOME="${gpg_home}" gpg --batch --import --dry-run "${candidate}" >/dev/null 2>"${log_file}"; then
               echo "gpg verdict: OK"
               if [[ -s "${log_file}" ]]; then
                 cat "${log_file}"
