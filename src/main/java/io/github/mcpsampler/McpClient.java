@@ -83,7 +83,7 @@ public class McpClient {
         JsonRpcResponse response = send("initialize", params);
 
         if (response != null && response.isSuccess()) {
-            sendNotification("notifications/initialized");
+            sendNotification("notifications/initialized", null);
         } else {
             log.debug("Skipping notifications/initialized because initialize returned an error");
         }
@@ -144,10 +144,13 @@ public class McpClient {
     /**
      * Sends a JSON-RPC notification (no id, no response expected).
      */
-    private void sendNotification(String method) throws IOException {
+    public void sendNotification(String method, Object params) throws IOException {
         ObjectNode notification = MAPPER.createObjectNode();
         notification.put("jsonrpc", "2.0");
         notification.put("method", method);
+        if (params != null) {
+            notification.set("params", MAPPER.valueToTree(params));
+        }
 
         String json = MAPPER.writeValueAsString(notification);
         log.debug(">>> [notification] method={}", method);

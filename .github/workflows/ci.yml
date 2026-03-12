@@ -81,3 +81,105 @@ jobs:
         with:
           name: docker-mock-echo-results
           path: results/docker-mock-echo
+
+  http-transports-smoke:
+    runs-on: ubuntu-latest
+    needs: quality-and-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Apache JMeter
+        shell: bash
+        run: |
+          set -euo pipefail
+          JMETER_VERSION=5.6.3
+          curl -sL "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz" | tar -xz -C "${RUNNER_TEMP}"
+          echo "JMETER_HOME=${RUNNER_TEMP}/apache-jmeter-${JMETER_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Install plugin + runtime dependencies into JMeter
+        shell: bash
+        run: |
+          set -euo pipefail
+          JMETER_HOME="${JMETER_HOME}" ./gradlew installLocalWithDeps --no-daemon
+
+      - name: Start mock HTTP+SSE MCP server
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results/http-smoke
+          MCP_HTTP_PORT=18080 node scripts/mock_http_sse_mcp_server.js > results/http-smoke/mock-http-sse.log 2>&1 &
+          echo "$!" > results/http-smoke/mock-server.pid
+          for i in {1..20}; do
+            if curl -sS -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"jsonrpc":"2.0","id":"probe","method":"tools/list"}' \
+              http://127.0.0.1:18080/rpc >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Mock HTTP+SSE server did not become ready in time" >&2
+          exit 1
+
+      - name: Run HTTP and HTTP+SSE smoke plans
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results/http-smoke/http
+          mkdir -p results/http-smoke/http-sse-1
+          mkdir -p results/http-smoke/http-sse-50
+
+          "${JMETER_HOME}/bin/jmeter" \
+            -n \
+            -t test-plans/mcp-http-test.jmx \
+            -l results/http-smoke/http/results.jtl \
+            -e -o results/http-smoke/http/report
+
+          "${JMETER_HOME}/bin/jmeter" \
+            -n \
+            -t test-plans/mcp-http-sse-test.jmx \
+            -l results/http-smoke/http-sse-1/results.jtl \
+            -e -o results/http-smoke/http-sse-1/report
+
+          "${JMETER_HOME}/bin/jmeter" \
+            -n \
+            -t test-plans/mcp-http-sse-50threads.jmx \
+            -l results/http-smoke/http-sse-50/results.jtl \
+            -e -o results/http-smoke/http-sse-50/report
+
+      - name: Assert smoke reports exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f results/http-smoke/http/report/index.html
+          test -f results/http-smoke/http-sse-1/report/index.html
+          test -f results/http-smoke/http-sse-50/report/index.html
+
+      - name: Stop mock HTTP+SSE MCP server
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f results/http-smoke/mock-server.pid ]; then
+            kill "$(cat results/http-smoke/mock-server.pid)" || true
+          fi
+
+      - name: Upload HTTP transport smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: http-transports-smoke-results
+          path: results/http-smoke

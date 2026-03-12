@@ -2,23 +2,30 @@
 
 Use this guide when adding GUI screenshots to the project docs.
 
-## Required Screenshots
+## Recommended Screenshot Sets
 
-1. `sampler-tools-call-config`
-- MCP Sampler configured for `tools/call`.
-- Must show `Command`, `Arguments`, `MCP Method`, `Tool name`, and JSON args.
+1. StdIO quick-start set (currently used in README)
+- add sampler menu
+- stdio sampler settings
+- response assertion setup
+- successful stdio result
 
-2. `results-success-response`
-- View Results Tree with a successful sample.
-- Must show status code/message and response body.
+2. HTTP+SSE quick-start set
+- HTTP+SSE sampler settings
+- response assertion for HTTP status (`Response Code = 200`)
 
-3. `results-error-response`
-- View Results Tree with a failing sample (for example invalid tool args).
-- Must show error code/message and response payload.
+3. `tools/call` config set
+- MCP Sampler configured for `tools/call`
+- show `Command`, `Arguments`, `MCP Method`, `Tool name`, and JSON args
+
+4. Error example set
+- failing sample (for example invalid tool args)
+- include error code/message and response payload
 
 ## File Naming
 
-Use lowercase kebab-case and add a short suffix if variants exist.
+Prefer lowercase kebab-case and add a short suffix if variants exist.  
+Existing screenshots may use legacy underscore names to keep README links stable.
 
 Examples:
 
@@ -43,3 +50,12 @@ Examples:
 ## Placement
 
 Store all screenshots in this directory: `docs/images/`.
+
+## Current Screenshots
+
+- [Add MCP sampler menu](add_mcp_sampler.png)
+- [STDIO sampler settings](stdio_sampler_settings.png)
+- [STDIO response assertion setup](response_assertion_stdio_example.png)
+- [STDIO result example](result_stdio_example.png)
+- [HTTP+SSE sampler settings](http_se_sampler_settings.png)
+- [HTTP+SSE response assertion setup (status 200)](response_assertion_http_example.png)

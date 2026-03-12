@@ -1,7 +1,7 @@
 # MCPulse - JMeter MCP Sampler
 [![CI (main)](https://github.com/AndreyVMarkelov/MCPulse/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AndreyVMarkelov/MCPulse/actions/workflows/ci.yml?query=branch%3Amain)
 
-Load-test MCP (Model Context Protocol) stdio servers directly from Apache JMeter.
+Load-test MCP (Model Context Protocol) servers over stdio, HTTP, and HTTP+SSE directly from Apache JMeter.
 
 ## Compatibility
 
@@ -44,47 +44,90 @@ Jar path:
 
 ## Quick Start (2 Minutes)
 
-1. Install plugin:
+Path note: commands and `scripts/...` arguments below are relative to this repository root.  
+Run JMeter from the repo root, or use absolute paths.
 
-```bash
-JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew installLocalWithDeps
-```
-
+1. Install plugin (see `Installation > Recommended local install` above).
 2. Restart JMeter.
-3. Add sampler: `Thread Group -> Add -> Sampler -> MCP Sampler (stdio)`.
-4. Use local echo mock:
+3. Add sampler: `Thread Group -> Add -> Sampler -> MCP Sampler`.
+
+![Add MCP Sampler in JMeter](docs/images/add_mcp_sampler.png)
+
+4. Use local echo mock (stdio) with these sampler settings:
+   - `Transport`: `stdio`
    - `Command`: `python3`
    - `Arguments`: `scripts/mock_mcp_server.py`
    - `MCP Method`: `tools/list`
-5. Run test and verify response contains tool `echo`.
+   - `Client name`: `jmeter-mcp-sampler` (default)
+   - `Client version`: `1.0.0` (default)
+
+![STDIO sampler settings example](docs/images/stdio_sampler_settings.png)
+
+5. Add a Response Assertion:
+   - `Field to Test`: `Response Data`
+   - `Pattern`: `echo`
+
+![Response Assertion for STDIO example](docs/images/response_assertion_stdio_example.png)
+
+6. Run test and verify the assertion passes.
+
+![STDIO result example](docs/images/result_stdio_example.png)
+
+### HTTP + SSE Quick Start
+
+1. Start local mock HTTP+SSE server:
+
+```bash
+node scripts/mock_http_sse_mcp_server.js
+```
+
+2. In sampler set:
+- `Transport`: `http+sse`
+- `HTTP base URL`: `http://127.0.0.1:8080`
+- `SSE endpoint path`: `/events`
+- `HTTP send path`: `/rpc`
+- `MCP Method`: `tools/list`
+- `Validation mode`: `none` (when using JMeter `Response Assertion`)
+
+![HTTP + SSE sampler settings example](docs/images/http_se_sampler_settings.png)
+
+3. Add Response Assertion for HTTP status:
+- `Field to Test`: `Response Code`
+- `Pattern`: `200`
+
+![Response Assertion for HTTP + SSE status code example](docs/images/response_assertion_http_example.png)
+
+4. Run test and verify the assertion passes (`Response Code = 200`, sample is green).
+
+Alternative: use built-in sampler validation instead of JMeter assertions:
+- `Validation mode`: `regex`
+- `Validation expr`: `echo`
 
 ## GUI Configuration
 
 | Field | Description | Example |
 |---|---|---|
+| Transport | `stdio`, `http`, `http+sse` | `http+sse` |
 | Command | Executable to run | `python3`, `node`, `uvx` |
 | Arguments | Space-separated args passed to command | `scripts/mock_mcp_server.py` |
+| HTTP base URL | Target MCP gateway/server URL | `http://127.0.0.1:8080` |
+| HTTP send path | JSON-RPC POST endpoint | `/rpc` |
+| SSE endpoint path | SSE stream endpoint (HTTP+SSE mode) | `/events` |
+| SSE connect mode | `per-sample` or `per-thread` | `per-thread` |
+| Correlation key | Field used to match SSE responses | `id` |
+| Headers | Multi-line `Key: Value` | `Authorization: Bearer ...` |
 | Client name | Sent in `initialize` | `jmeter-mcp-sampler` |
 | Client version | Sent in `initialize` | `1.0.0` |
 | Response timeout (ms) | Per-request timeout | `30000` |
+| Max response bytes | Trim response payload in sample data | `65536` |
+| Validation mode | `none`, `regex`, `jsonpath`, `equals` | `jsonpath` |
 | Warm-up mode | `none`, `process`, `initialize` | `initialize` |
 | MCP Method | JSON-RPC method family | `tools/list` |
+| Raw request JSON | Full JSON-RPC template for `raw JSON` method | `{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\"}` |
 | Tool name | Used by `tools/call` | `echo` |
 | Arguments (JSON) | Tool arguments for `tools/call` | `{"message":"hello","count":2}` |
 
-### Do we need screenshots?
-
-Screenshots are not required for functionality, but they are strongly recommended for usability and adoption.
-
-Recommended minimum set:
-
-1. Full sampler form for `tools/call`.
-2. Example successful response in View Results Tree.
-3. Example error response (invalid tool args).
-
-Suggested location: `docs/images/`.
-
-Screenshot contribution guide: [docs/images/README.md](docs/images/README.md)
+Screenshot guide and catalog: [docs/images/README.md](docs/images/README.md)
 
 ## Supported MCP Methods
 
@@ -94,6 +137,7 @@ Screenshot contribution guide: [docs/images/README.md](docs/images/README.md)
 | `tools/list` | `tools/list` |
 | `tools/call` | `tools/call` |
 | `resources/list` | `resources/list` |
+| `raw JSON` | user-provided JSON-RPC payload |
 
 ## Test MCP Servers
 
@@ -192,6 +236,23 @@ Useful `tools/call` payload samples:
 {"loops":300000}
 ```
 
+#### 4) Node HTTP + SSE server
+
+File: `scripts/mock_http_sse_mcp_server.js`
+
+Start manually:
+
+```bash
+node scripts/mock_http_sse_mcp_server.js
+```
+
+Behavior:
+
+- SSE endpoint: `/events`
+- JSON-RPC send endpoints: `/rpc` and `/message`
+- supports `initialize`, `tools/list`, `tools/call`, `resources/list`
+- sends JSON-RPC response via HTTP body and broadcasts same response over SSE
+
 ### External servers often used with this sampler
 
 `mcp-server-fetch` (via `uvx`):
@@ -249,7 +310,7 @@ JMETER_HOME=/path/to/apache-jmeter-5.6.3 ./gradlew perfAll
 
 ## CI and Release
 
-Main README intentionally keeps this short.
+Additional CI/release details are documented separately.
 
 - CI details: [docs/CI.md](docs/CI.md)
 - Release and publishing details: [docs/RELEASE.md](docs/RELEASE.md)

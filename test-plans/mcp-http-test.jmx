@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="MCPulse - HTTP MCP Smoke" enabled="true">
+      <stringProp name="TestPlan.comments">Smoke test for MCP sampler over plain HTTP request/response transport</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="HTTP Smoke" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">stoptest</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlGui" testclass="LoopController">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <io.github.mcpsampler.McpSampler guiclass="io.github.mcpsampler.gui.McpSamplerGui" testclass="io.github.mcpsampler.McpSampler" testname="1. initialize (HTTP)" enabled="true">
+          <stringProp name="McpSampler.transport">http</stringProp>
+          <stringProp name="McpSampler.httpBaseUrl">http://127.0.0.1:18080</stringProp>
+          <stringProp name="McpSampler.httpSendPath">/rpc</stringProp>
+          <stringProp name="McpSampler.method">initialize</stringProp>
+          <stringProp name="McpSampler.clientName">mcpulse-http</stringProp>
+          <stringProp name="McpSampler.clientVersion">1.0.0</stringProp>
+          <stringProp name="McpSampler.timeoutMs">10000</stringProp>
+        </io.github.mcpsampler.McpSampler>
+        <hashTree>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert initialize response code is 200 (HTTP)" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="1">200</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message"/>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">2</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+        </hashTree>
+
+        <io.github.mcpsampler.McpSampler guiclass="io.github.mcpsampler.gui.McpSamplerGui" testclass="io.github.mcpsampler.McpSampler" testname="2. tools/list (HTTP)" enabled="true">
+          <stringProp name="McpSampler.transport">http</stringProp>
+          <stringProp name="McpSampler.httpBaseUrl">http://127.0.0.1:18080</stringProp>
+          <stringProp name="McpSampler.httpSendPath">/rpc</stringProp>
+          <stringProp name="McpSampler.method">tools/list</stringProp>
+          <stringProp name="McpSampler.clientName">mcpulse-http</stringProp>
+          <stringProp name="McpSampler.clientVersion">1.0.0</stringProp>
+          <stringProp name="McpSampler.timeoutMs">10000</stringProp>
+        </io.github.mcpsampler.McpSampler>
+        <hashTree>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert tools/list response code is 200 (HTTP)" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="1">200</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message"/>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">2</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert tools/list contains echo (HTTP)" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="1">echo</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message"/>
+            <stringProp name="Assertion.test_field">Assertion.response_data</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">2</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

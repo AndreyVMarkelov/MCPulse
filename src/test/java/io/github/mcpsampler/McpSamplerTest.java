@@ -1,12 +1,17 @@
 package io.github.mcpsampler;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.mcpsampler.model.JsonRpcResponse;
+import io.github.mcpsampler.transport.McpRequest;
+import io.github.mcpsampler.transport.McpTransport;
+import io.github.mcpsampler.transport.McpTransportException;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -17,35 +22,35 @@ class McpSamplerTest {
     @Test
     void threadStarted_doesNotWarmup_whenModeNone() {
         CountingProcessManager manager = new CountingProcessManager();
-        RecordingClient client = new RecordingClient(manager.process);
-        TestableSampler sampler = new TestableSampler(manager, client);
+        RecordingTransport transport = new RecordingTransport();
+        TestableSampler sampler = new TestableSampler(manager, transport);
         sampler.setWarmupMode(McpSampler.WARMUP_NONE);
 
         sampler.threadStarted();
 
         assertEquals(0, manager.startCalls);
-        assertEquals(0, client.initializeCalls);
+        assertEquals(0, transport.initializeCalls);
     }
 
     @Test
     void threadStarted_startsProcessOnly_whenWarmupModeProcess() {
         CountingProcessManager manager = new CountingProcessManager();
-        RecordingClient client = new RecordingClient(manager.process);
-        TestableSampler sampler = new TestableSampler(manager, client);
+        RecordingTransport transport = new RecordingTransport();
+        TestableSampler sampler = new TestableSampler(manager, transport);
         sampler.setWarmupMode(McpSampler.WARMUP_PROCESS);
 
         sampler.threadStarted();
 
         assertEquals(1, manager.startCalls);
-        assertEquals(0, client.initializeCalls);
+        assertEquals(0, transport.initializeCalls);
         assertEquals("test-thread", manager.lastThreadKey);
     }
 
     @Test
     void threadStarted_initializesClient_whenWarmupModeInitialize() {
         CountingProcessManager manager = new CountingProcessManager();
-        RecordingClient client = new RecordingClient(manager.process);
-        TestableSampler sampler = new TestableSampler(manager, client);
+        RecordingTransport transport = new RecordingTransport();
+        TestableSampler sampler = new TestableSampler(manager, transport);
         sampler.setClientName("warmup-client");
         sampler.setClientVersion("1.0.0");
         sampler.setWarmupMode(McpSampler.WARMUP_INITIALIZE);
@@ -53,18 +58,19 @@ class McpSamplerTest {
         sampler.threadStarted();
 
         assertEquals(1, manager.startCalls);
-        assertEquals(1, client.initializeCalls);
-        assertEquals("warmup-client", client.lastClientName);
-        assertEquals("1.0.0", client.lastClientVersion);
+        assertEquals(1, transport.initializeCalls);
+        assertEquals("warmup-client", transport.lastClientName);
+        assertEquals("1.0.0", transport.lastClientVersion);
+        assertEquals(1, transport.notificationCalls);
     }
 
     private static final class TestableSampler extends McpSampler {
         private final CountingProcessManager manager;
-        private final RecordingClient client;
+        private final RecordingTransport transport;
 
-        private TestableSampler(CountingProcessManager manager, RecordingClient client) {
+        private TestableSampler(CountingProcessManager manager, RecordingTransport transport) {
             this.manager = manager;
-            this.client = client;
+            this.transport = transport;
         }
 
         @Override
@@ -73,13 +79,36 @@ class McpSamplerTest {
         }
 
         @Override
-        protected McpClient createClient(Process process, int timeoutMs) {
-            return client;
+        protected McpTransport createStdioTransport(Process process, int timeoutMs) {
+            return transport;
         }
 
         @Override
         protected String getThreadKey() {
             return "test-thread";
+        }
+    }
+
+    private static final class RecordingTransport implements McpTransport {
+        private int initializeCalls;
+        private int notificationCalls;
+        private String lastClientName;
+        private String lastClientVersion;
+
+        @Override
+        public JsonRpcResponse call(McpRequest request, Duration timeout) throws McpTransportException {
+            if ("initialize".equals(request.getMethod())) {
+                initializeCalls++;
+                ObjectNode params = (ObjectNode) request.getParams();
+                lastClientName = params.get("clientInfo").get("name").asText();
+                lastClientVersion = params.get("clientInfo").get("version").asText();
+                return new JsonRpcResponse();
+            }
+            if ("notifications/initialized".equals(request.getMethod())) {
+                notificationCalls++;
+                return null;
+            }
+            return new JsonRpcResponse();
         }
     }
 
@@ -107,24 +136,6 @@ class McpSamplerTest {
         @Override
         public void close() {
             // no-op in unit tests
-        }
-    }
-
-    private static final class RecordingClient extends McpClient {
-        private int initializeCalls;
-        private String lastClientName;
-        private String lastClientVersion;
-
-        private RecordingClient(Process process) {
-            super(process, 1_000);
-        }
-
-        @Override
-        public JsonRpcResponse initialize(String clientName, String clientVersion) {
-            initializeCalls++;
-            lastClientName = clientName;
-            lastClientVersion = clientVersion;
-            return new JsonRpcResponse();
         }
     }
 
