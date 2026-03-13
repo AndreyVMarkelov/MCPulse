@@ -152,6 +152,66 @@ tasks.register('perfAll') {
     dependsOn('perfColdStart', 'perfTail', 'perfPayload')
 }
 
+tasks.register('generatePluginsRepoJson') {
+    def outputFile = layout.buildDirectory.file('plugins/plugins-repo.json')
+    outputs.file(outputFile)
+
+    doLast {
+        String repository = System.getenv('GITHUB_REPOSITORY') ?: findProperty('githubRepository')?.toString()
+        if (repository == null || repository.trim().isEmpty()) {
+            throw new GradleException('GITHUB_REPOSITORY is not set. Provide -PgithubRepository=owner/repo for local runs.')
+        }
+
+        String pluginVersion = project.version.toString()
+        String latestAssetBase = "https://github.com/${repository}/releases/latest/download"
+
+        def resolvedArtifacts = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts
+                .sort { a, b ->
+                    "${a.moduleVersion.id.group}:${a.name}:${a.moduleVersion.id.version}" <=> "${b.moduleVersion.id.group}:${b.name}:${b.moduleVersion.id.version}"
+                }
+
+        Map<String, String> libs = new LinkedHashMap<>()
+        resolvedArtifacts.each { artifact ->
+            String groupPath = artifact.moduleVersion.id.group.replace('.', '/')
+            String artifactName = artifact.name
+            String artifactVersion = artifact.moduleVersion.id.version
+            String extension = artifact.extension ?: 'jar'
+            libs.put(
+                    artifactName,
+                    "https://repo1.maven.org/maven2/${groupPath}/${artifactName}/${artifactVersion}/${artifactName}-${artifactVersion}.${extension}"
+            )
+        }
+
+        Map<String, Object> descriptor = [
+                id              : 'avm-mcp-sampler',
+                name            : 'MCPulse MCP Sampler',
+                description     : 'JMeter sampler for MCP over stdio, HTTP, and HTTP+SSE',
+                screenshotUrl   : "https://raw.githubusercontent.com/${repository}/main/docs/images/http_se_sampler_settings.png",
+                helpUrl         : "https://github.com/${repository}",
+                vendor          : 'AndreyVMarkelov',
+                markerClass     : 'io.github.mcpsampler.gui.McpSamplerGui',
+                componentClasses: [
+                        'io.github.mcpsampler.McpSampler',
+                        'io.github.mcpsampler.gui.McpSamplerGui'
+                ],
+                versions        : [
+                        (pluginVersion): [
+                                downloadUrl: "${latestAssetBase}/jmeter-mcp-sampler-latest.jar",
+                                changes    : "https://github.com/${repository}/releases/tag/v${pluginVersion}",
+                                libs       : libs,
+                                depends    : []
+                        ]
+                ]
+        ]
+
+        File target = outputFile.get().asFile
+        target.parentFile.mkdirs()
+        target.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([descriptor])) + System.lineSeparator()
+
+        logger.lifecycle("Generated Plugins Manager descriptor: ${target}")
+    }
+}
+
 mavenPublishing {
     publishToMavenCentral(true)
     signAllPublications()

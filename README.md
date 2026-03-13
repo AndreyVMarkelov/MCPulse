@@ -42,6 +42,20 @@ Jar path:
 
 `build/libs/jmeter-mcp-sampler-<version>.jar`
 
+### Plugins Manager Custom Repo (Latest Release)
+
+Each tagged release now publishes a Plugins Manager descriptor asset:
+
+`https://github.com/AndreyVMarkelov/MCPulse/releases/latest/download/plugins-repo.json`
+
+To add this custom repo in JMeter, set in `user.properties`:
+
+```properties
+jpgc.repo.address=https://jmeter-plugins.org/repo/;https://github.com/AndreyVMarkelov/MCPulse/releases/latest/download/plugins-repo.json
+```
+
+Then restart JMeter and open Plugins Manager.
+
 ## Quick Start (2 Minutes)
 
 Path note: commands and `scripts/...` arguments below are relative to this repository root.  

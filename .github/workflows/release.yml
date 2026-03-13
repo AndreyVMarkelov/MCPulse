@@ -216,6 +216,15 @@ jobs:
       - name: Build artifacts
         run: ./gradlew clean build -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
 
+      - name: Generate Plugins Manager repository descriptor
+        run: ./gradlew generatePluginsRepoJson -PreleaseVersion="${RELEASE_VERSION}" --no-daemon
+
+      - name: Prepare release asset aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "build/libs/jmeter-mcp-sampler-${RELEASE_VERSION}.jar" "build/libs/jmeter-mcp-sampler-latest.jar"
+
       - name: Publish package (GitHub Packages)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -233,6 +242,7 @@ jobs:
           generate_release_notes: true
           files: |
             build/libs/*.jar
+            build/plugins/plugins-repo.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

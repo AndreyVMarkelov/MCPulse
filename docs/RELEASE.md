@@ -28,6 +28,7 @@ Local fallback version remains snapshot style (`1.0.0-SNAPSHOT`) when no release
 1. GitHub Packages
 2. Maven Central
 3. GitHub Release (artifacts)
+4. Plugins Manager descriptor (`plugins-repo.json`) as a GitHub Release asset
 
 ## Required GitHub Secrets (Maven Central)
 
@@ -41,3 +42,6 @@ Local fallback version remains snapshot style (`1.0.0-SNAPSHOT`) when no release
 
 - publish uses signed artifacts
 - release fails early if tag format is invalid
+- release also uploads:
+- `jmeter-mcp-sampler-latest.jar` (stable latest asset name)
+- `plugins-repo.json` (Plugins Manager descriptor pointing to latest jar asset)
