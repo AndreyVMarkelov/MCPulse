@@ -184,7 +184,7 @@ tasks.register('generatePluginsRepoJson') {
 
         Map<String, Object> descriptor = [
                 id              : 'avm-mcp-sampler',
-                name            : 'MCPulse MCP Sampler',
+                name            : 'MCPLoadTester JMeter MCP Sampler',
                 description     : 'JMeter sampler for MCP over stdio, HTTP, and HTTP+SSE',
                 screenshotUrl   : "https://raw.githubusercontent.com/${repository}/main/docs/images/http_se_sampler_settings.png",
                 helpUrl         : "https://github.com/${repository}",
@@ -219,8 +219,8 @@ mavenPublishing {
 
     pom {
         name = 'jmeter-mcp-sampler'
-        description = 'JMeter plugin for MCP stdio server testing'
-        url = 'https://github.com/AndreyVMarkelov/MCPulse'
+        description = 'JMeter plugin for MCP server load testing over stdio, HTTP, and HTTP+SSE'
+        url = 'https://github.com/AndreyVMarkelov/MCPLoadTester'
         licenses {
             license {
                 name = 'MIT License'
@@ -234,9 +234,9 @@ mavenPublishing {
             }
         }
         scm {
-            connection = 'scm:git:git://github.com/AndreyVMarkelov/MCPulse.git'
-            developerConnection = 'scm:git:ssh://git@github.com/AndreyVMarkelov/MCPulse.git'
-            url = 'https://github.com/AndreyVMarkelov/MCPulse'
+            connection = 'scm:git:git://github.com/AndreyVMarkelov/MCPLoadTester.git'
+            developerConnection = 'scm:git:ssh://git@github.com/AndreyVMarkelov/MCPLoadTester.git'
+            url = 'https://github.com/AndreyVMarkelov/MCPLoadTester'
         }
     }
 }

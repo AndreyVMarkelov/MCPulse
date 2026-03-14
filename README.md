@@ -1,7 +1,13 @@
-# MCPLoadTester JMeter MCP Sampler
-[![CI (main)](https://github.com/AndreyVMarkelov/MCPulse/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AndreyVMarkelov/MCPulse/actions/workflows/ci.yml?query=branch%3Amain)
+# MCPLoadTester
+[![CI (main)](https://github.com/AndreyVMarkelov/MCPLoadTester/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AndreyVMarkelov/MCPLoadTester/actions/workflows/ci.yml?query=branch%3Amain)
 
-Load-test MCP (Model Context Protocol) servers over stdio, HTTP, and HTTP+SSE directly from Apache JMeter.
+MCPLoadTester is a load testing toolkit for Model Context Protocol (MCP) servers.
+
+It allows performance testing of MCP tools and agents using:
+
+- Apache JMeter
+- k6 (planned)
+- CLI tools (planned)
 
 ## Compatibility
 
@@ -46,12 +52,12 @@ Jar path:
 
 Each tagged release now publishes a Plugins Manager descriptor asset:
 
-`https://github.com/AndreyVMarkelov/MCPulse/releases/latest/download/plugins-repo.json`
+`https://github.com/AndreyVMarkelov/MCPLoadTester/releases/latest/download/plugins-repo.json`
 
 To add this custom repo in JMeter, set in `user.properties`:
 
 ```properties
-jpgc.repo.address=https://jmeter-plugins.org/repo/;https://github.com/AndreyVMarkelov/MCPulse/releases/latest/download/plugins-repo.json
+jpgc.repo.address=https://jmeter-plugins.org/repo/;https://github.com/AndreyVMarkelov/MCPLoadTester/releases/latest/download/plugins-repo.json
 ```
 
 Then restart JMeter and open Plugins Manager.
