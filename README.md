@@ -1,4 +1,4 @@
-# MCPulse - JMeter MCP Sampler
+# MCPLoadTester JMeter MCP Sampler
 [![CI (main)](https://github.com/AndreyVMarkelov/MCPulse/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AndreyVMarkelov/MCPulse/actions/workflows/ci.yml?query=branch%3Amain)
 
 Load-test MCP (Model Context Protocol) servers over stdio, HTTP, and HTTP+SSE directly from Apache JMeter.
@@ -55,6 +55,7 @@ jpgc.repo.address=https://jmeter-plugins.org/repo/;https://github.com/AndreyVMar
 ```
 
 Then restart JMeter and open Plugins Manager.
+The catalog/display name is `MCPLoadTester JMeter MCP Sampler`.
 
 ## Quick Start (2 Minutes)
 
